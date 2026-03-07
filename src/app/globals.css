@@ -245,6 +245,11 @@ a {
 
 .split-pane-left {
   border-right: 1px solid var(--border);
+  width: calc(var(--split-ratio, 0.5) * 100%);
+}
+
+.split-pane-right {
+  width: calc((1 - var(--split-ratio, 0.5)) * 100%);
 }
 
 .split-divider {
@@ -260,6 +265,33 @@ a {
 .split-divider:hover,
 .split-divider.dragging {
   background: var(--accent);
+}
+
+@media (max-width: 768px) {
+  .split-pane {
+    flex-direction: column;
+  }
+
+  .split-pane-left,
+  .split-pane-right {
+    width: 100% !important;
+  }
+
+  .split-pane-left {
+    height: calc(var(--split-ratio, 0.5) * 100%);
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .split-pane-right {
+    height: calc((1 - var(--split-ratio, 0.5)) * 100%);
+  }
+
+  .split-divider {
+    width: 100%;
+    height: 6px;
+    cursor: row-resize;
+  }
 }
 
 /* ── Editor ───────────────────────────────────── */

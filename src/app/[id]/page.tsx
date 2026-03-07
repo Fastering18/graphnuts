@@ -27,13 +27,32 @@ const EDGE_STYLES = [
 ];
 
 const DEFAULT_DOT = `digraph G {
-    node [shape=box style="filled,rounded" fillcolor="#ffffff"]
-    A [label="Node A"]
-    B [label="Node B"]
-    C [label="Node C"]
-    A -> B [label="connects"]
-    B -> C
-    A -> C [style=dashed]
+    graph [rankdir=LR bgcolor="#0f172a" fontname="Inter, sans-serif" pad=0.5]
+    node [shape=rect style="filled,rounded" fillcolor="#1e293b" color="#334155" fontname="Inter, sans-serif" fontcolor="#f8fafc" margin="0.3,0.2"]
+    edge [color="#64748b" fontname="Inter, sans-serif" fontcolor="#94a3b8" penwidth=1.5]
+
+    subgraph cluster_frontend {
+        label="Frontend"
+        fontcolor="#f8fafc" color="#3b82f6" bgcolor="#172554" style="rounded"
+        Client [label="Web Client"]
+        Mobile [label="Mobile App"]
+    }
+
+    subgraph cluster_backend {
+        label="Backend Services"
+        fontcolor="#f8fafc" color="#10b981" bgcolor="#064e3b" style="rounded"
+        API [label="API Gateway\n(GraphQL)" fillcolor="#059669"]
+        Auth [label="Auth Service"]
+        DB [label="Primary DB\n(PostgreSQL)" shape=cylinder fillcolor="#334155"]
+        Cache [label="Redis Cache" shape=cylinder fillcolor="#334155"]
+    }
+
+    Client -> API [label=" HTTPS POST "]
+    Mobile -> API [label=" HTTPS POST "]
+    API -> Auth [label=" gRPC verify "]
+    API -> Cache [label=" Check user session "]
+    API -> DB [label=" Query User Data "]
+    Auth -> DB [label=" Read/Write "]
 }`;
 
 export default function EditorPage() {
@@ -55,6 +74,8 @@ export default function EditorPage() {
     const [mode, setMode] = useState<CanvasMode>("select");
     const [showHelp, setShowHelp] = useState(false);
     const [showExplorer, setShowExplorer] = useState(true);
+    const [showEditor, setShowEditor] = useState(true);
+    const [showPreview, setShowPreview] = useState(true);
     const [edgeCtx, setEdgeCtx] = useState<{ id: string; x: number; y: number } | null>(null);
 
     const hierarchy = parseDotHierarchy(dot);
@@ -149,29 +170,9 @@ export default function EditorPage() {
         return () => window.removeEventListener("keydown", handler);
     }, [showHelp, edgeCtx, handleDelete, handleSelectAll, dot, filename, handleCenterView]);
 
-    return (
-        <div className="editor-layout">
-            <Toolbar
-                filename={filename}
-                dot={dot}
-                svgRef={{ current: canvasRef.current?.getSvg() ?? null } as React.RefObject<SVGSVGElement | null>}
-                onFilenameChange={setFilename}
-                onDotChange={(newDot) => setDot(newDot)}
-                onLayout={handleLayout}
-                mode={mode}
-                onModeChange={setMode}
-                onCenterView={handleCenterView}
-            />
-            <div className="editor-main">
-                {showExplorer && (
-                    <Explorer
-                        elements={hierarchy}
-                        selection={selection}
-                        onSelectionChange={handleExplorerSelect}
-                        onDelete={handleDelete}
-                        onRename={handleRename}
-                    />
-                )}
+    const renderEditorAndPreview = () => {
+        if (showEditor && showPreview) {
+            return (
                 <SplitPane
                     left={<CodeEditor ref={editorRef} value={dot} onChange={handleDotChange} />}
                     right={
@@ -186,7 +187,63 @@ export default function EditorPage() {
                             onEdgeContext={handleEdgeContext}
                         />
                     }
+                    defaultRatio={0.4}
                 />
+            );
+        }
+        if (showEditor) return <CodeEditor ref={editorRef} value={dot} onChange={handleDotChange} />;
+        if (showPreview) return (
+            <GraphCanvas
+                ref={canvasRef}
+                dot={dot}
+                engine={engine}
+                mode={mode}
+                onDotChange={handleDotChange}
+                selection={selection}
+                onSelectionChange={setSelection}
+                onEdgeContext={handleEdgeContext}
+            />
+        );
+        return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", width: "100%", color: "var(--text-muted)" }}>Nothing to show</div>;
+    };
+
+    return (
+        <div className="editor-layout">
+            <Toolbar
+                filename={filename}
+                dot={dot}
+                svgRef={{ current: canvasRef.current?.getSvg() ?? null } as React.RefObject<SVGSVGElement | null>}
+                onFilenameChange={setFilename}
+                onDotChange={(newDot) => setDot(newDot)}
+                onLayout={handleLayout}
+                mode={mode}
+                onModeChange={setMode}
+                onCenterView={handleCenterView}
+                showExplorer={showExplorer}
+                showEditor={showEditor}
+                showPreview={showPreview}
+                onToggleExplorer={() => setShowExplorer((p) => !p)}
+                onToggleEditor={() => setShowEditor((p) => !p)}
+                onTogglePreview={() => setShowPreview((p) => !p)}
+            />
+            <div className="editor-main">
+                {showExplorer ? (
+                    <SplitPane
+                        left={
+                            <Explorer
+                                elements={hierarchy}
+                                selection={selection}
+                                onSelectionChange={handleExplorerSelect}
+                                onDelete={handleDelete}
+                                onRename={handleRename}
+                            />
+                        }
+                        right={renderEditorAndPreview()}
+                        defaultRatio={0.2}
+                    />
+                ) : (
+                    renderEditorAndPreview()
+                )}
             </div>
             <div className="status-bar">
                 <div className="status-dot" />

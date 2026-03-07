@@ -15,10 +15,17 @@ export default function SplitPane({ left, right, defaultRatio = 0.38 }: Props) {
 
     const onMouseDown = useCallback(() => {
         setDragging(true);
+        const isVertical = window.innerWidth <= 768;
+
         const onMove = (e: MouseEvent) => {
             if (!containerRef.current) return;
             const rect = containerRef.current.getBoundingClientRect();
-            const r = Math.max(0.15, Math.min(0.85, (e.clientX - rect.left) / rect.width));
+            let r;
+            if (isVertical) {
+                r = Math.max(0.15, Math.min(0.85, (e.clientY - rect.top) / rect.height));
+            } else {
+                r = Math.max(0.15, Math.min(0.85, (e.clientX - rect.left) / rect.width));
+            }
             setRatio(r);
         };
         const onUp = () => {
@@ -31,10 +38,17 @@ export default function SplitPane({ left, right, defaultRatio = 0.38 }: Props) {
     }, []);
 
     return (
-        <div className="split-pane" ref={containerRef} style={dragging ? { userSelect: "none" } : undefined}>
-            <div className="split-pane-left" style={{ width: `${ratio * 100}%` }}>{left}</div>
+        <div
+            className="split-pane"
+            ref={containerRef}
+            style={{
+                "--split-ratio": ratio,
+                ...(dragging ? { userSelect: "none" } : {})
+            } as React.CSSProperties}
+        >
+            <div className="split-pane-left">{left}</div>
             <div className={`split-divider ${dragging ? "dragging" : ""}`} onMouseDown={onMouseDown} />
-            <div className="split-pane-right" style={{ width: `${(1 - ratio) * 100}%` }}>{right}</div>
+            <div className="split-pane-right">{right}</div>
         </div>
     );
 }

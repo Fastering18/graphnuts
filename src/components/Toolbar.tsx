@@ -15,11 +15,19 @@ interface Props {
     mode: CanvasMode;
     onModeChange: (mode: CanvasMode) => void;
     onCenterView: () => void;
+    showExplorer: boolean;
+    showEditor: boolean;
+    showPreview: boolean;
+    onToggleExplorer: () => void;
+    onToggleEditor: () => void;
+    onTogglePreview: () => void;
 }
 
 export default function Toolbar({
     filename, dot, svgRef, onFilenameChange, onDotChange, onLayout,
     mode, onModeChange, onCenterView,
+    showExplorer, showEditor, showPreview,
+    onToggleExplorer, onToggleEditor, onTogglePreview
 }: Props) {
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -80,6 +88,21 @@ export default function Toolbar({
             </div>
 
             <div className="toolbar-spacer" />
+
+            <div className="dropdown">
+                <button className="btn btn-secondary" onClick={() => toggle("view")}>👁 View ▾</button>
+                <div className={`dropdown-menu ${openMenu === "view" ? "open" : ""}`}>
+                    <button className="dropdown-item" onClick={onToggleExplorer}>
+                        {showExplorer ? "✓ " : "  "} Explorer
+                    </button>
+                    <button className="dropdown-item" onClick={onToggleEditor}>
+                        {showEditor ? "✓ " : "  "} Code Editor
+                    </button>
+                    <button className="dropdown-item" onClick={onTogglePreview}>
+                        {showPreview ? "✓ " : "  "} Preview
+                    </button>
+                </div>
+            </div>
 
             <div className="dropdown">
                 <button className="btn btn-secondary" onClick={() => toggle("layout")}>✦ Layout ▾</button>
