@@ -1,0 +1,248 @@
+digraph FollowThePath {
+
+    /* ── Global ──────────────────────────────────────────────────── */
+    graph [
+        rankdir=TB
+        bgcolor="#f0f2f5"
+        fontname="Segoe UI"
+        fontsize=13
+        pad="0.6"
+        nodesep=0.5
+        ranksep=0.6
+        size="12,16!"
+        compound=true
+    ]
+
+    node [
+        shape=box
+        style="filled,rounded"
+        fillcolor="#ffffff"
+        fontcolor="#1a1a2e"
+        fontname="Segoe UI"
+        fontsize=12
+        color="#aaaaaa"
+        penwidth=1.2
+        margin="0.18,0.10"
+    ]
+
+    edge [
+        color="#3a7bd5"
+        fontcolor="#555555"
+        fontname="Segoe UI"
+        fontsize=10
+        penwidth=1.8
+        arrowsize=0.7
+        style=bold
+    ]
+
+    /* ── Terminal ────────────────────────────────────────────────── */
+    START [label="START" shape=oval fillcolor="#3a7bd5" fontcolor="white" penwidth=2]
+    STOP  [label="STOP"  shape=oval fillcolor="#d94f4f" fontcolor="white" penwidth=2]
+
+    /* ════════════════════════════════════════════════════════════ */
+    /*  UTILITY GROUP                                              */
+    /* ════════════════════════════════════════════════════════════ */
+    subgraph cluster_utility {
+        graph [
+            label=<<B><FONT POINT-SIZE="18" COLOR="#5a5a5a">UTILITY</FONT></B>>
+            style="filled,rounded" fillcolor="#e8e8ee"
+            color="#b0b0b8" penwidth=1.5
+            margin="20"
+        ]
+
+        INIT [label="Initialize Node & Load YOLO" fillcolor="#f5f5ff" color="#8888aa"]
+
+        WAIT [label="Wait for Camera Frame" shape=parallelogram fillcolor="#eeeef8" color="#8888aa"]
+
+        PUB [label="Publish Thruster Commands\n& Annotated Image" fillcolor="#dde0f0" color="#8888aa" fontcolor="#333366"]
+
+        //LOOP [label="Next Frame" shape=parallelogram fillcolor="#eeeef8" color="#8888aa"]
+
+        COUNT_OB [label="Count Black & Yellow\nBuoys for Spin Phase" fillcolor="#fff5e0" fontcolor="#7a6520" color="#ccb060"]
+    }
+
+    /* ════════════════════════════════════════════════════════════ */
+    /*  VISION GROUP                                               */
+    /* ════════════════════════════════════════════════════════════ */
+    subgraph cluster_vision {
+        graph [
+            label=<<B><FONT POINT-SIZE="18" COLOR="#1a6fb5">VISION</FONT></B>>
+            style="filled,rounded" fillcolor="#e0f0ff"
+            color="#7abce0" penwidth=1.5
+            margin="20"
+        ]
+
+        CONVERTNDETECT  [label="Detect Object with YOLO" fillcolor="#d0eadb" fontcolor="#1b5e3a" color="#6cbd8a"]
+        //DETECT   [label="Run YOLO\nObject Detection" fillcolor="#d0eadb" fontcolor="#1b5e3a" color="#6cbd8a"]
+        DRAW     [label="Draw Guide Grid\non Frame" fillcolor="#f0f8ff" color="#7abce0"]
+
+        { rank=same; CONVERTNDETECT; DRAW; }
+
+        /* ── End-of-Path Detection (inside Vision) ──── */
+        END_DET  [label="Any Buoys\nDetected?" shape=diamond fillcolor="#f0f8ff" fontcolor="#333333" color="#7abce0"]
+        EMPTY_UP [label="Increment\nEmpty Frame Counter" fillcolor="#f0f8ff" color="#7abce0"]
+        EMPTY_RS [label="Reset\nEmpty Frame Counter" fillcolor="#f0f8ff" color="#7abce0"]
+        TOO_MANY [label="Too Many\nEmpty Frames?" shape=diamond fillcolor="#f0f8ff" fontcolor="#333333" color="#7abce0"]
+        MARK_END [label="Mark Path as Finished" fillcolor="#ffe0e0" fontcolor="#993333" color="#cc8888"]
+
+        { rank=same; EMPTY_RS; END_DET; EMPTY_UP; }
+        { rank=same; TOO_MANY; MARK_END; }
+
+        /* ── Classification ──── */
+        CLASSIFY [label="For Each Detected Buoy\nBelow the Guide Line" shape=parallelogram fillcolor="#e8f4ff" color="#7abce0"]
+
+        IS_RED   [label="Red\nBuoy?" shape=diamond fillcolor="#ffe8e8" fontcolor="#993333" color="#e09090"]
+        IS_GREEN [label="Green\nBuoy?" shape=diamond fillcolor="#e0f5e6" fontcolor="#2d6b3f" color="#80c090"]
+        IS_OBSBL [label="Black/Yellow\nObstacle?" shape=diamond fillcolor="#fff5e0" fontcolor="#7a6520" color="#ccb060"]
+
+        { rank=same; IS_RED; IS_GREEN; IS_OBSBL; }
+
+        ZONE_RED [label="Record Position\n(Left / Center / Right)" fillcolor="#ffd8d8" fontcolor="#993333" color="#e09090"]
+        ZONE_GRN [label="Record Position\n(Left / Center / Right)" fillcolor="#c8ecd0" fontcolor="#2d6b3f" color="#80c090"]
+        ZONE_OBS [label="Record Side\n(Left / Right)" fillcolor="#ffeccc" fontcolor="#7a6520" color="#ccb060"]
+
+        { rank=same; ZONE_RED; ZONE_GRN; ZONE_OBS; }
+    }
+
+    /* ════════════════════════════════════════════════════════════ */
+    /*  CONTROL GROUP                                              */
+    /* ════════════════════════════════════════════════════════════ */
+    subgraph cluster_control {
+        graph [
+            label=<<B><FONT POINT-SIZE="18" COLOR="#b53a3a">CONTROL</FONT></B>>
+            style="filled,rounded" fillcolor="#fce8e8"
+            color="#e09090" penwidth=1.5
+            margin="20"
+        ]
+
+        PATH_FIN [label="Path\nFinished?" shape=diamond fillcolor="#fff0f0" fontcolor="#333333" color="#d09090"]
+
+        /* ── Active Navigation ──── */
+        subgraph cluster_active_nav {
+            graph [
+                label=<<B><FONT POINT-SIZE="12" COLOR="#2a5faa">Active Navigation</FONT></B>>
+                style="filled,rounded" fillcolor="#eef3fc"
+                color="#a0bce0" penwidth=1
+            ]
+
+            HAS_RED  [label="Red Buoy\nNearby?" shape=diamond fillcolor="#ffe8e8" fontcolor="#993333" color="#e09090"]
+            TURN_R   [label="Steer RIGHT\n(away from red)" fillcolor="#ffd0d0" fontcolor="#993333" color="#e09090"]
+
+            HAS_GRN  [label="Green Buoy\nNearby?" shape=diamond fillcolor="#e0f5e6" fontcolor="#2d6b3f" color="#80c090"]
+            TURN_L   [label="Steer LEFT\n(away from green)" fillcolor="#c8ecd0" fontcolor="#2d6b3f" color="#80c090"]
+
+            HAS_OBS  [label="Obstacle\nin Path?" shape=diamond fillcolor="#fff5e0" fontcolor="#7a6520" color="#ccb060"]
+            AVOID    [label="Steer Away\nfrom Obstacle" fillcolor="#ffeccc" fontcolor="#7a6520" color="#ccb060"]
+
+            GO_STR   [label="Go Straight" fillcolor="#e8f0ff" fontcolor="#2a5faa" color="#a0bce0"]
+        }
+
+        APPLY [label="Apply Differential Thrust\nto Left & Right Thrusters" fillcolor="#dde5f5" fontcolor="#2a3f6a" color="#8899cc"]
+
+        /* ── Spin Phase ──── */
+        subgraph cluster_spin {
+            graph [
+                label=<<B><FONT POINT-SIZE="12" COLOR="#b53a3a">Spin Phase (Post-Path)</FONT></B>>
+                style="filled,rounded" fillcolor="#fdf0f0"
+                color="#e0a0a0" penwidth=1
+            ]
+
+            ANY_BLK  [label="Black Buoys\nCounted?" shape=diamond fillcolor="#f0eaea" fontcolor="#333333" color="#c0a0a0"]
+            SPIN_CW  [label="Pivot Clockwise\n(per black buoy)" fillcolor="#ffd0d0" fontcolor="#993333" color="#e09090"]
+
+            ANY_YLW  [label="Yellow Buoys\nCounted?" shape=diamond fillcolor="#f0eaea" fontcolor="#333333" color="#c0a0a0"]
+            SPIN_CCW [label="Circle Counter-Clockwise\n(per yellow buoy)" fillcolor="#c8ecd0" fontcolor="#2d6b3f" color="#80c090"]
+
+            DONE_SP  [label="All Spins Complete\nHalt Thrusters" fillcolor="#ffe0e0" fontcolor="#993333" color="#cc8888"]
+        }
+    }
+
+    /* ── Credit ──────────────────────────────────────────────────── */
+    CREDIT [label="Kelompok 2" shape=plaintext fontsize=11 fontcolor="#999999" fillcolor="transparent" style=""]
+
+    /* ════════════════════════════════════════════════════════════ */
+    /*  EDGES                                                      */
+    /* ════════════════════════════════════════════════════════════ */
+
+    /* ── Utility: Init ──── */
+    START    -> INIT      [label=" POWER_ON " color="#3a7bd5" lhead=cluster_utility]
+    INIT     -> WAIT      [label=" READY " color="#8888aa"]
+
+    /* ── Utility → Vision ──── */
+    WAIT     -> CONVERTNDETECT:e   [label=" FRAME_IN " color="#3a7bd5"]
+
+    /* ── Vision pipeline ──── */
+   CONVERTNDETECT   -> DRAW      [label=" RESULTS " color="#5baa6a"]
+
+    /* ── End-of-path (stays inside Vision) ──── */
+    DRAW     -> END_DET   [label=" GRID_DRAWN " color="#7abce0"]
+
+    END_DET  -> EMPTY_RS  [label=" Yes " fontcolor="#2d8b4a" color="#5baa6a"]
+    END_DET  -> EMPTY_UP  [label=" No "  fontcolor="#cc4444" color="#d94f4f"]
+
+    EMPTY_UP -> TOO_MANY  [label=" CHECK " color="#7abce0"]
+    TOO_MANY -> MARK_END  [label=" Yes " fontcolor="#cc4444" color="#d94f4f"]
+    TOO_MANY -> CLASSIFY  [label=" No " color="#7abce0"]
+    EMPTY_RS -> CLASSIFY  [label=" RESET " color="#7abce0"]
+
+    /* ── Vision: Classification loop ──── */
+    CLASSIFY -> IS_RED    [label=" IDENTIFY " color="#7abce0"]
+    IS_RED   -> ZONE_RED  [label=" Yes " fontcolor="#cc4444" color="#d94f4f"]
+    IS_RED   -> IS_GREEN  [label=" No " color="#7abce0"]
+    ZONE_RED -> IS_GREEN  [color="#7abce0"]
+
+    IS_GREEN -> ZONE_GRN  [label=" Yes " fontcolor="#2d8b4a" color="#5baa6a"]
+    IS_GREEN -> IS_OBSBL  [label=" No " color="#7abce0"]
+    ZONE_GRN -> IS_OBSBL  [color="#7abce0"]
+
+    IS_OBSBL -> ZONE_OBS  [label=" Yes " fontcolor="#b08a20" color="#ccb060"]
+    IS_OBSBL -> COUNT_OB  [label=" No " color="#8888aa"]
+    ZONE_OBS -> COUNT_OB  [color="#8888aa"]
+
+    COUNT_OB -> CLASSIFY  [label=" NEXT_BUOY " style=dashed color="#8888aa"]
+
+    /* ── Vision → Control ──── */
+    //CLASSIFY -> PATH_FIN  [label=" ALL_CLASSIFIED " style=dashed color="#d94f4f" ltail=cluster_vision]
+    MARK_END -> PATH_FIN  [label=" END_LANE " color="#d94f4f"]
+
+    /* ── Control: Active Nav ──── */
+    PATH_FIN -> HAS_RED:n   [label=" No (Navigate) " fontcolor="#2d8b4a" color="#3a7bd5" lhead=cluster_active_nav]
+
+    HAS_RED  -> TURN_R    [label=" Yes " fontcolor="#cc4444" color="#d94f4f"]
+    HAS_RED  -> HAS_GRN   [label=" No " color="#3a7bd5"]
+    TURN_R   -> APPLY     [label=" STEER_R " color="#d94f4f"]
+
+    HAS_GRN  -> TURN_L    [label=" Yes " fontcolor="#2d8b4a" color="#5baa6a"]
+    HAS_GRN  -> HAS_OBS   [label=" No " color="#3a7bd5"]
+    TURN_L   -> APPLY     [label=" STEER_L " color="#5baa6a"]
+
+    HAS_OBS  -> AVOID     [label=" Yes " fontcolor="#b08a20" color="#ccb060"]
+    HAS_OBS  -> GO_STR    [label=" No " color="#3a7bd5"]
+    AVOID    -> APPLY     [label=" EVADE " color="#ccb060"]
+    GO_STR   -> APPLY     [label=" FORWARD " color="#3a7bd5"]
+
+    /* ── Control: Spin ──── */
+    PATH_FIN -> ANY_BLK   [label=" Yes (Spin) " fontcolor="#cc4444" color="#d94f4f" lhead=cluster_spin]
+
+    ANY_BLK  -> SPIN_CW   [label=" Yes " fontcolor="#cc4444" color="#d94f4f"]
+    ANY_BLK  -> ANY_YLW   [label=" No " color="#8888aa"]
+    SPIN_CW  -> PUB       [label=" PIVOTING_CW " color="#d94f4f"]
+
+    ANY_YLW  -> SPIN_CCW  [label=" Yes " fontcolor="#2d8b4a" color="#5baa6a"]
+    ANY_YLW  -> DONE_SP   [label=" No " color="#8888aa"]
+    SPIN_CCW -> PUB       [label=" CIRCLING_CCW " color="#5baa6a"]
+
+    DONE_SP  -> PUB       [label=" HALT " color="#d94f4f"]
+
+    /* ── Control → Utility: Publish ──── */
+    APPLY    -> PUB       [label=" THRUST_SET " color="#8888aa"]
+    //PUB      -> LOOP      [label=" PUBLISHED " color="#8888aa"]
+    PUB     -> WAIT      [label=" NEXT_FRAME " style=dashed color="#8888aa"]
+
+    /* ── Shutdown ──── */
+    WAIT     -> STOP      [label=" SHUTDOWN " fontcolor="#cc4444" color="#d94f4f" style=dashed ltail=cluster_utility]
+
+    /* ── Credit ──── */
+    { rank=max; CREDIT; }
+    PUB -> CREDIT [style=invis]
+}
