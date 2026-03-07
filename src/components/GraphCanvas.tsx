@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from "react";
 import { gnRender, gnPositions } from "@/lib/gn-wasm";
+import { patchNodePosition } from "@/lib/dot-patcher";
 import { select } from "d3-selection";
 import { zoom, zoomIdentity, type ZoomBehavior } from "d3-zoom";
 
@@ -38,7 +39,7 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
     const positionsRef = useRef<Record<string, NodePos>>({});
     const [error, setError] = useState<string | null>(null);
     const [wasmReady, setWasmReady] = useState(false);
-    const dragState = useRef<{ targets: Set<string>; sx: number; sy: number } | null>(null);
+    const dragState = useRef<{ targets: Set<string>; sx: number; sy: number; currentDot: string } | null>(null);
 
     modeRef.current = mode;
     selRef.current = selection;
@@ -141,7 +142,7 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                         let targets: Set<string>;
                         if (selRef.current.has(nid) && selRef.current.size > 0) targets = new Set(selRef.current);
                         else { targets = new Set([nid]); onSelectionChange(targets); }
-                        dragState.current = { targets, sx: event.clientX, sy: event.clientY };
+                        dragState.current = { targets, sx: event.clientX, sy: event.clientY, currentDot: dotRef.current };
 
                         const onDragMove = (e: MouseEvent) => {
                             if (!dragState.current || !svgRef.current) return;
@@ -155,8 +156,8 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                             dragState.current.sx = e.clientX;
                             dragState.current.sy = e.clientY;
 
+                            let newDot = dragState.current.currentDot;
                             dragState.current.targets.forEach((tid) => {
-                                // Filter to only actual nodes (not edges)
                                 if (tid.includes("->")) return;
                                 const el = svg.querySelector(`g.gn-node[data-id="${tid}"]`);
                                 if (!el) return;
@@ -165,10 +166,14 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                                 const cx = m ? parseFloat(m[1]) : 0;
                                 const cy = m ? parseFloat(m[2]) : 0;
                                 el.setAttribute("transform", `translate(${cx + dx},${cy + dy})`);
-                                // Update positions ref
+
                                 const pos = positionsRef.current[tid];
                                 if (pos) { pos.x = cx + dx; pos.y = cy + dy; }
+
+                                newDot = patchNodePosition(newDot, tid, cx + dx, cy + dy);
                             });
+                            dragState.current.currentDot = newDot;
+                            onDotChange(newDot);
                         };
 
                         const onDragEnd = () => {
@@ -296,7 +301,7 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
             }
         };
 
-        const t = setTimeout(doRender, 300);
+        const t = setTimeout(doRender, 16);
         return () => { cancelled = true; clearTimeout(t); };
     }, [dot, engine, wasmReady, setupInteractions, applySelection, centerView]);
 

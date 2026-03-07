@@ -515,6 +515,28 @@ static void layout(Graph& g) {
         }
     }
 
+    // Apply manual positions if any
+    for (auto& [id, n] : g.nodes) {
+        std::string p = "";
+        auto it = n.attrs.find("pos");
+        if (it != n.attrs.end()) p = it->second;
+        else {
+            it = n.attrs.find("position");
+            if (it != n.attrs.end()) p = it->second;
+        }
+        if (!p.empty()) {
+            if (p.size() >= 2 && p.front() == '"' && p.back() == '"') p = p.substr(1, p.size() - 2);
+            if (!p.empty() && p.back() == '!') p.pop_back();
+            size_t comma = p.find(',');
+            if (comma != std::string::npos) {
+                try {
+                    n.x = std::stof(p.substr(0, comma));
+                    n.y = std::stof(p.substr(comma + 1));
+                } catch (...) {}
+            }
+        }
+    }
+
     // Compute cluster bounds
     for (auto& [cid, cl] : g.clusters) {
         float minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
