@@ -13,6 +13,10 @@ import {
     parseDotHierarchy, patchEdgeStyle, findNodeLine, removeAllPositions,
 } from "@/lib/dot-patcher";
 import { downloadText } from "@/lib/file-io";
+import { useSession } from "next-auth/react";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import type { CanvasHandle, CanvasMode } from "@/components/GraphCanvas";
 import type { CodeEditorHandle } from "@/components/CodeEditor";
 
@@ -61,6 +65,11 @@ export default function EditorPage() {
     const canvasRef = useRef<CanvasHandle>(null);
     const editorRef = useRef<CodeEditorHandle>(null);
 
+    const { data: session } = useSession();
+    const isConvexId = id.length > 20;
+    const graphData = useQuery(api.graphs.getGraph, isConvexId ? { id: id as Id<"graphs"> } : "skip");
+    const saveGraph = useMutation(api.graphs.saveGraph);
+
     const [dot, setDot] = useState(() => {
         if (typeof window !== "undefined") return sessionStorage.getItem(`gn_${id}`) || DEFAULT_DOT;
         return DEFAULT_DOT;
@@ -69,6 +78,26 @@ export default function EditorPage() {
         if (typeof window !== "undefined") return sessionStorage.getItem(`gn_name_${id}`) || "untitled.gn";
         return "untitled.gn";
     });
+    const [showShare, setShowShare] = useState(false);
+
+    const remoteDot = useRef<string | null>(null);
+    const remoteTitle = useRef<string | null>(null);
+
+    // Populate from Convex once loaded
+    useEffect(() => {
+        if (graphData && isConvexId) {
+            // Synchronize if this is the first load, OR if we haven't typed locally
+            if (remoteDot.current === null || dot === remoteDot.current) {
+                setDot(graphData.dotSource);
+                remoteDot.current = graphData.dotSource;
+            }
+            if (remoteTitle.current === null || filename === remoteTitle.current) {
+                setFilename(graphData.title);
+                remoteTitle.current = graphData.title;
+            }
+        }
+    }, [graphData, isConvexId]);
+
     const [engine] = useState("gn");
     const [selection, setSelection] = useState<Set<string>>(new Set());
     const [mode, setMode] = useState<CanvasMode>("select");
@@ -77,18 +106,42 @@ export default function EditorPage() {
     const [showEditor, setShowEditor] = useState(true);
     const [showPreview, setShowPreview] = useState(true);
     const [edgeCtx, setEdgeCtx] = useState<{ id: string; x: number; y: number } | null>(null);
+    const [nodeCtx, setNodeCtx] = useState<{ id: string; x: number; y: number } | null>(null);
 
     const hierarchy = parseDotHierarchy(dot);
 
-    useEffect(() => { sessionStorage.setItem(`gn_${id}`, dot); }, [dot, id]);
+    // Sync to Convex
+    useEffect(() => {
+        sessionStorage.setItem(`gn_${id}`, dot);
+
+        const canEdit = isConvexId && session?.user?.id && (
+            session.user.id === graphData?.userId || graphData?.isPublicEditable
+        );
+
+        if (canEdit) {
+            const timer = setTimeout(() => {
+                remoteDot.current = dot;
+                remoteTitle.current = filename;
+                saveGraph({
+                    id: id as Id<"graphs">,
+                    title: filename,
+                    dotSource: dot,
+                    isPublic: graphData?.isPublic ?? false,
+                    isPublicEditable: graphData?.isPublicEditable ?? false,
+                }).catch(err => console.error("Save failed", err));
+            }, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [dot, filename, id, isConvexId, session, saveGraph, graphData]);
+
     useEffect(() => { sessionStorage.setItem(`gn_name_${id}`, filename); }, [filename, id]);
 
     useEffect(() => {
-        if (!edgeCtx) return;
-        const handler = () => setEdgeCtx(null);
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, [edgeCtx]);
+        if (!edgeCtx && !nodeCtx) return;
+        const handler = () => { setEdgeCtx(null); setNodeCtx(null); };
+        document.addEventListener("pointerdown", handler);
+        return () => document.removeEventListener("pointerdown", handler);
+    }, [edgeCtx, nodeCtx]);
 
     const handleLayout = useCallback(async (m: LayoutMode) => {
         // Remove positions and let WASM re-layout
@@ -133,6 +186,12 @@ export default function EditorPage() {
 
     const handleEdgeContext = useCallback((edgeId: string, x: number, y: number) => {
         setEdgeCtx({ id: edgeId, x, y });
+        setNodeCtx(null);
+    }, []);
+
+    const handleNodeShapeContext = useCallback((nodeId: string, x: number, y: number) => {
+        setNodeCtx({ id: nodeId, x, y });
+        setEdgeCtx(null);
     }, []);
 
     const handleEdgeStyle = useCallback((style: string) => {
@@ -144,6 +203,41 @@ export default function EditorPage() {
         setEdgeCtx(null);
     }, [edgeCtx]);
 
+    const handleNodeShape = useCallback((shape: string) => {
+        if (!nodeCtx) return;
+        setDot((prev) => {
+            const lines = prev.split("\n");
+
+            const nodeLineIdx = lines.findIndex(l => {
+                if (l.includes("->")) return false;
+                const trimmed = l.trim();
+                const idRegex = new RegExp(`^"?${nodeCtx.id.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}"?\\s*(?:\\[|$)`);
+                return idRegex.test(trimmed);
+            });
+
+            if (nodeLineIdx !== -1) {
+                const line = lines[nodeLineIdx];
+                const shapeRegex = /shape="?[a-zA-Z0-9]+"?(?=[\] \t]|$)/;
+                if (shapeRegex.test(line)) {
+                    lines[nodeLineIdx] = line.replace(shapeRegex, `shape=${shape}`);
+                } else if (line.includes("[")) {
+                    lines[nodeLineIdx] = line.replace("[", `[shape=${shape} `);
+                } else {
+                    lines[nodeLineIdx] = `${line.trim()} [shape=${shape}]`;
+                }
+            } else {
+                const lastBraceIdx = lines.findLastIndex(l => l.trim() === "}");
+                if (lastBraceIdx !== -1) {
+                    lines.splice(lastBraceIdx, 0, `    ${nodeCtx.id} [shape=${shape}]`);
+                } else {
+                    lines.push(`    ${nodeCtx.id} [shape=${shape}]`);
+                }
+            }
+            return lines.join("\n");
+        });
+        setNodeCtx(null);
+    }, [nodeCtx]);
+
     const handleCenterView = useCallback(() => {
         canvasRef.current?.centerView();
     }, []);
@@ -153,7 +247,7 @@ export default function EditorPage() {
             const inEditor = (e.target as HTMLElement).closest(".cm-editor");
             if (e.key === "?" && !inEditor) { e.preventDefault(); setShowHelp((p) => !p); return; }
             if (e.key === "Escape") {
-                if (edgeCtx) { setEdgeCtx(null); return; }
+                if (edgeCtx || nodeCtx) { setEdgeCtx(null); setNodeCtx(null); return; }
                 if (showHelp) { setShowHelp(false); return; }
                 setSelection(new Set());
                 return;
@@ -185,6 +279,7 @@ export default function EditorPage() {
                             selection={selection}
                             onSelectionChange={setSelection}
                             onEdgeContext={handleEdgeContext}
+                            onNodeShapeContext={handleNodeShapeContext}
                         />
                     }
                     defaultRatio={0.4}
@@ -202,6 +297,7 @@ export default function EditorPage() {
                 selection={selection}
                 onSelectionChange={setSelection}
                 onEdgeContext={handleEdgeContext}
+                onNodeShapeContext={handleNodeShapeContext}
             />
         );
         return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", width: "100%", color: "var(--text-muted)" }}>Nothing to show</div>;
@@ -209,6 +305,59 @@ export default function EditorPage() {
 
     return (
         <div className="editor-layout">
+            {showShare && (
+                <div className="modal-overlay" onClick={() => setShowShare(false)} style={{ zIndex: 1000, position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()} style={{ background: "#1e293b", padding: 24, borderRadius: 12, minWidth: 400, boxShadow: "0 20px 40px rgba(0,0,0,0.4)", border: "1px solid #334155" }}>
+                        <h2 style={{ margin: "0 0 16px 0", fontSize: 20 }}>Share Graph</h2>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
+                            <label style={{ fontSize: 13, color: "#94a3b8" }}>Canonical Link</label>
+                            <div style={{ display: "flex", gap: 8 }}>
+                                <input
+                                    readOnly
+                                    value={typeof window !== "undefined" ? window.location.href : ""}
+                                    style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "8px 12px", color: "#f8fafc" }}
+                                />
+                                <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(window.location.href)}>Copy</button>
+                            </div>
+                        </div>
+
+                        {session?.user?.id === graphData?.userId && isConvexId ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={graphData?.isPublic || false}
+                                        onChange={async (e) => {
+                                            await saveGraph({ id: id as Id<"graphs">, title: filename, dotSource: dot, isPublic: e.target.checked, isPublicEditable: graphData?.isPublicEditable || false });
+                                        }}
+                                    />
+                                    Anyone with link can view
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, opacity: graphData?.isPublic ? 1 : 0.5 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={graphData?.isPublicEditable || false}
+                                        onChange={async (e) => {
+                                            await saveGraph({ id: id as Id<"graphs">, title: filename, dotSource: dot, isPublic: graphData?.isPublic || false, isPublicEditable: e.target.checked });
+                                        }}
+                                        disabled={!graphData?.isPublic}
+                                    />
+                                    Anyone with link can edit
+                                </label>
+                            </div>
+                        ) : (
+                            <div style={{ fontSize: 13, color: "#94a3b8" }}>
+                                Only the owner can change sharing settings.
+                                {!isConvexId && " Please sign in and save to Convex first!"}
+                            </div>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
+                            <button className="btn btn-primary" onClick={() => setShowShare(false)}>Done</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <Toolbar
                 filename={filename}
                 dot={dot}
@@ -219,6 +368,7 @@ export default function EditorPage() {
                 mode={mode}
                 onModeChange={setMode}
                 onCenterView={handleCenterView}
+                onShare={() => setShowShare(true)}
                 showExplorer={showExplorer}
                 showEditor={showEditor}
                 showPreview={showPreview}
@@ -260,13 +410,35 @@ export default function EditorPage() {
 
             {edgeCtx && (
                 <div className="context-menu" style={{ top: edgeCtx.y, left: edgeCtx.x }}
-                    onMouseDown={(e) => e.stopPropagation()}>
+                    onPointerDown={(e) => e.stopPropagation()}>
                     <div style={{ padding: "6px 10px", fontSize: "11px", color: "var(--text-muted)", fontWeight: 600 }}>
                         Edge Style
                     </div>
                     <div className="context-sep" />
                     {EDGE_STYLES.map((s) => (
                         <button key={s.value} className="context-item" onClick={() => handleEdgeStyle(s.value)}>
+                            {s.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {nodeCtx && (
+                <div className="context-menu" style={{ top: nodeCtx.y, left: nodeCtx.x }}
+                    onPointerDown={(e) => e.stopPropagation()}>
+                    <div style={{ padding: "6px 10px", fontSize: "11px", color: "var(--text-muted)", fontWeight: 600 }}>
+                        Node Shape
+                    </div>
+                    <div className="context-sep" />
+                    {[
+                        { value: "box", label: "⬜ Box" },
+                        { value: "ellipse", label: "⭕ Ellipse" },
+                        { value: "diamond", label: "💎 Diamond" },
+                        { value: "cylinder", label: "🛢️ Cylinder" },
+                        { value: "invhouse", label: "🏳️ Flag" },
+                        { value: "folder", label: "📁 Folder" },
+                    ].map((s) => (
+                        <button key={s.value} className="context-item" onClick={() => handleNodeShape(s.value)}>
                             {s.label}
                         </button>
                     ))}

@@ -61,17 +61,35 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 async function svgToCanvas(svgEl: SVGSVGElement): Promise<HTMLCanvasElement> {
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+
+    // Remove the D3 zoom transform so the export is strictly the diagram
+    const cloneRoot = clone.querySelector("g.gn-root") as SVGGElement | null;
+    if (cloneRoot) cloneRoot.removeAttribute("transform");
+
+    const realRoot = svgEl.querySelector("g.gn-root") as SVGGElement | null;
+    const bbox = realRoot ? realRoot.getBBox() : svgEl.getBBox();
+
+    const pad = 24;
+    const w = Math.ceil(bbox.width) + pad * 2;
+    const h = Math.ceil(bbox.height) + pad * 2;
+    const vx = Math.floor(bbox.x) - pad;
+    const vy = Math.floor(bbox.y) - pad;
+
+    // Rather than viewBox (which clips in Canvas rendering), explicitly translate everything
+    // so it fits entirely into the positive 0,0 space.
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("width", w.toString() + "px");
+    clone.setAttribute("height", h.toString() + "px");
+    clone.removeAttribute("viewBox");
+    clone.style.overflow = "visible";
+
+    // Re-wrap contents in a translated group
+    const innerHtml = clone.innerHTML;
+    clone.innerHTML = `<g transform="translate(${-vx}, ${-vy})">${innerHtml}</g>`;
+
     const serializer = new XMLSerializer();
-    let svgStr = serializer.serializeToString(svgEl);
-
-    const bbox = svgEl.getBBox();
-    const w = Math.ceil(bbox.width + bbox.x * 2) || 1200;
-    const h = Math.ceil(bbox.height + bbox.y * 2) || 800;
-
-    svgStr = svgStr.replace(
-        /^<svg/,
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"`
-    );
+    const svgStr = serializer.serializeToString(clone);
 
     const img = new Image();
     const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
@@ -84,7 +102,7 @@ async function svgToCanvas(svgEl: SVGSVGElement): Promise<HTMLCanvasElement> {
             canvas.height = h * 2;
             const ctx = canvas.getContext("2d")!;
             ctx.scale(2, 2);
-            ctx.fillStyle = "#0a0a0f";
+            ctx.fillStyle = "#0a0a0f"; // Background color
             ctx.fillRect(0, 0, w, h);
             ctx.drawImage(img, 0, 0, w, h);
             URL.revokeObjectURL(url);

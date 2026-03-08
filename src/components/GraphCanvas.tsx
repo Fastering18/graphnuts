@@ -22,12 +22,80 @@ interface Props {
     selection: Set<string>;
     onSelectionChange: (sel: Set<string>) => void;
     onEdgeContext: (edgeId: string, x: number, y: number) => void;
+    onNodeShapeContext: (nodeId: string, x: number, y: number) => void;
 }
 
 interface NodePos { x: number; y: number; w: number; h: number; }
 
+function shiftEdgePaths(svg: SVGSVGElement, nodeId: string, dx: number, dy: number) {
+    svg.querySelectorAll("g.gn-edge").forEach((edgeG) => {
+        const ds = edgeG as HTMLElement;
+        const from = ds.dataset.from;
+        const to = ds.dataset.to;
+        if (from !== nodeId && to !== nodeId) return;
+
+        const isFrom = from === nodeId;
+        const isTo = to === nodeId;
+
+        edgeG.querySelectorAll("path").forEach(path => {
+            const d = path.getAttribute("d") || "";
+            const numRegex = /-?\d+(?:\.\d+)?/g;
+            const nums: number[] = [];
+            let m;
+            while ((m = numRegex.exec(d)) !== null) nums.push(parseFloat(m[0]));
+
+            if (nums.length === 4) {
+                if (isFrom) { nums[0] += dx; nums[1] += dy; }
+                if (isTo) { nums[2] += dx; nums[3] += dy; }
+                path.setAttribute("d", `M${nums[0].toFixed(2)},${nums[1].toFixed(2)} L${nums[2].toFixed(2)},${nums[3].toFixed(2)}`);
+            } else if (nums.length === 6) {
+                if (isFrom) { nums[0] += dx; nums[1] += dy; }
+                if (isTo) { nums[4] += dx; nums[5] += dy; }
+
+                const sx = nums[0], sy = nums[1], tx = nums[4], ty = nums[5];
+                const mx = (sx + tx) / 2, my = (sy + ty) / 2;
+                const xdiff = tx - sx, ydiff = ty - sy;
+                let len = Math.sqrt(xdiff * xdiff + ydiff * ydiff);
+                if (len < 0.1) len = 1;
+                const off = Math.min(len * 0.1, 15.0);
+                const nx = -ydiff / len * off, ny = xdiff / len * off;
+                nums[2] = mx + nx;
+                nums[3] = my + ny;
+
+                path.setAttribute("d", `M${nums[0].toFixed(2)},${nums[1].toFixed(2)} Q${nums[2].toFixed(2)},${nums[3].toFixed(2)} ${nums[4].toFixed(2)},${nums[5].toFixed(2)}`);
+            } else if (nums.length >= 8) {
+                if (isFrom) { nums[0] += dx; nums[1] += dy; }
+                if (isTo) { nums[nums.length - 2] += dx; nums[nums.length - 1] += dy; }
+                let newD = `M${nums[0].toFixed(2)},${nums[1].toFixed(2)}`;
+                for (let i = 2; i < nums.length; i += 2) {
+                    newD += ` L${nums[i].toFixed(2)},${nums[i + 1].toFixed(2)}`;
+                }
+                path.setAttribute("d", newD);
+            }
+        });
+
+        // Try to optionally move edge label if it exists
+        const text = edgeG.querySelector("text");
+        const rect = edgeG.querySelector("rect");
+        if (text) {
+            const x = parseFloat(text.getAttribute("x") || "0");
+            const y = parseFloat(text.getAttribute("y") || "0");
+            const tdx = isFrom && isTo ? dx : dx / 2;
+            const tdy = isFrom && isTo ? dy : dy / 2;
+            text.setAttribute("x", (x + tdx).toFixed(2));
+            text.setAttribute("y", (y + tdy).toFixed(2));
+            if (rect) {
+                const rx = parseFloat(rect.getAttribute("x") || "0");
+                const ry = parseFloat(rect.getAttribute("y") || "0");
+                rect.setAttribute("x", (rx + tdx).toFixed(2));
+                rect.setAttribute("y", (ry + tdy).toFixed(2));
+            }
+        }
+    });
+}
+
 const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
-    { dot, engine, mode, onDotChange, selection, onSelectionChange, onEdgeContext }, ref
+    { dot, engine, mode, onDotChange, selection, onSelectionChange, onEdgeContext, onNodeShapeContext }, ref
 ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement | null>(null);
@@ -112,12 +180,31 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
         zoomRef.current = zoomBehavior;
         svgSel.call(zoomBehavior);
 
-        svgSel.on("mousedown.interact", (event: MouseEvent) => {
-            if (event.button !== 0) return;
+        svgSel.on("pointerdown.interact", (event: PointerEvent) => {
+            // Only left click or active touch
+            if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 2) return;
             const target = event.target as Element;
             const nodeG = target.closest("g.gn-node");
             const edgeG = target.closest("g.gn-edge");
             const clusterG = target.closest("g.gn-cluster");
+
+            // Handle Context Menu Actions (Right Click / Long Press)
+            if (event.pointerType === "mouse" && event.button === 2) {
+                if (nodeG) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const nid = (nodeG as HTMLElement).dataset.id || "";
+                    onNodeShapeContext(nid, event.clientX, event.clientY);
+                    return;
+                }
+                if (edgeG) {
+                    event.preventDefault();
+                    const ds = edgeG as HTMLElement;
+                    onEdgeContext(`${ds.dataset.from}->${ds.dataset.to}`, event.clientX, event.clientY);
+                    return;
+                }
+                return;
+            }
 
             if (modeRef.current === "select") {
                 if (nodeG || edgeG || clusterG) {
@@ -144,7 +231,7 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                         else { targets = new Set([nid]); onSelectionChange(targets); }
                         dragState.current = { targets, sx: event.clientX, sy: event.clientY, currentDot: dotRef.current };
 
-                        const onDragMove = (e: MouseEvent) => {
+                        const onDragMove = (e: PointerEvent) => {
                             if (!dragState.current || !svgRef.current) return;
                             const root = svg.querySelector("g.gn-root");
                             if (!root) return;
@@ -171,19 +258,24 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                                 if (pos) { pos.x = cx + dx; pos.y = cy + dy; }
 
                                 newDot = patchNodePosition(newDot, tid, cx + dx, cy + dy);
+                                shiftEdgePaths(svg, tid, dx, dy);
                             });
                             dragState.current.currentDot = newDot;
-                            onDotChange(newDot);
                         };
 
                         const onDragEnd = () => {
-                            window.removeEventListener("mousemove", onDragMove);
-                            window.removeEventListener("mouseup", onDragEnd);
+                            if (dragState.current) {
+                                onDotChange(dragState.current.currentDot);
+                            }
+                            window.removeEventListener("pointermove", onDragMove as any);
+                            window.removeEventListener("pointerup", onDragEnd);
+                            window.removeEventListener("pointercancel", onDragEnd);
                             dragState.current = null;
                         };
 
-                        window.addEventListener("mousemove", onDragMove);
-                        window.addEventListener("mouseup", onDragEnd);
+                        window.addEventListener("pointermove", onDragMove as any);
+                        window.addEventListener("pointerup", onDragEnd);
+                        window.addEventListener("pointercancel", onDragEnd);
                     }
                 } else {
                     // Lasso
@@ -204,7 +296,7 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                     rect.setAttribute("height", "0");
                     svg.appendChild(rect);
 
-                    const onLassoMove = (e: MouseEvent) => {
+                    const onLassoMove = (e: PointerEvent) => {
                         const pt = svg.createSVGPoint();
                         pt.x = e.clientX; pt.y = e.clientY;
                         const cur = pt.matrixTransform(svg.getScreenCTM()!.inverse());
@@ -215,8 +307,9 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                     };
 
                     const onLassoEnd = () => {
-                        window.removeEventListener("mousemove", onLassoMove);
-                        window.removeEventListener("mouseup", onLassoEnd);
+                        window.removeEventListener("pointermove", onLassoMove as any);
+                        window.removeEventListener("pointerup", onLassoEnd);
+                        window.removeEventListener("pointercancel", onLassoEnd);
                         const lx = parseFloat(rect.getAttribute("x")!);
                         const ly = parseFloat(rect.getAttribute("y")!);
                         const lw = parseFloat(rect.getAttribute("width")!);
@@ -245,22 +338,33 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                         onSelectionChange(selected);
                     };
 
-                    window.addEventListener("mousemove", onLassoMove);
-                    window.addEventListener("mouseup", onLassoEnd);
+                    window.addEventListener("pointermove", onLassoMove as any);
+                    window.addEventListener("pointerup", onLassoEnd);
+                    window.addEventListener("pointercancel", onLassoEnd);
                 }
             } else {
                 if (!nodeG && !edgeG && !clusterG) onSelectionChange(new Set());
             }
         });
 
-        svgSel.on("contextmenu.edge", (event: MouseEvent) => {
-            const edgeG = (event.target as Element).closest("g.gn-edge");
-            if (!edgeG) return;
+        // Native context menu override on the whole SVG
+        svgSel.on("contextmenu.interact", (event: MouseEvent) => {
             event.preventDefault();
-            const ds = edgeG as HTMLElement;
-            onEdgeContext(`${ds.dataset.from}->${ds.dataset.to}`, event.clientX, event.clientY);
+            const target = event.target as Element;
+            const nodeG = target.closest("g.gn-node");
+            const edgeG = target.closest("g.gn-edge");
+            if (nodeG) {
+                const nid = (nodeG as HTMLElement).dataset.id || "";
+                onNodeShapeContext(nid, event.clientX, event.clientY);
+                return;
+            }
+            if (edgeG) {
+                const ds = edgeG as HTMLElement;
+                onEdgeContext(`${ds.dataset.from}->${ds.dataset.to}`, event.clientX, event.clientY);
+                return;
+            }
         });
-    }, [onSelectionChange, onEdgeContext]);
+    }, [onSelectionChange, onEdgeContext, onNodeShapeContext]);
 
     // ── Main render ─────────────────────────────
     useEffect(() => {

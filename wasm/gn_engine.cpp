@@ -286,8 +286,13 @@ class Parser {
 
     void parseBody(const std::string& clusterId) {
         while (peek().type != T_RBRACE && peek().type != T_EOF) {
+            size_t startPos = pos;
             parseStmt(clusterId);
             match(T_SEMI);
+            if (pos == startPos) {
+                // Prevent infinite loop on unexpected tokens
+                next();
+            }
         }
     }
 
@@ -680,16 +685,51 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
     Pt pf = borderPt(fn, tn.x, tn.y);
     Pt pt = borderPt(tn, fn.x, fn.y);
 
-    // Slight curve
-    float mx = (pf.x + pt.x) / 2, my = (pf.y + pt.y) / 2;
-    float dx = pt.x - pf.x, dy = pt.y - pf.y;
-    float len = std::sqrt(dx*dx + dy*dy);
-    if (len < 0.1f) len = 1;
-    float off = std::min(len * 0.1f, 15.0f);
-    float nx = -dy / len * off, ny = dx / len * off;
-    float cx = mx + nx, cy = my + ny;
+    std::string splines = "curved"; // default
+    auto splinesIt = g.graphAttrs.find("splines");
+    if (splinesIt != g.graphAttrs.end()) splines = splinesIt->second;
 
-    std::string path = "M" + f2s(pf.x) + "," + f2s(pf.y) + " Q" + f2s(cx) + "," + f2s(cy) + " " + f2s(pt.x) + "," + f2s(pt.y);
+    std::string path;
+    float lx = 0, ly = 0; // Label position
+    float cx = 0, cy = 0; // Focus for curved
+
+    if (splines == "line" || splines == "false") {
+        path = "M" + f2s(pf.x) + "," + f2s(pf.y) + " L" + f2s(pt.x) + "," + f2s(pt.y);
+        lx = (pf.x + pt.x) / 2;
+        ly = (pf.y + pt.y) / 2;
+    } else if (splines == "ortho") {
+        std::string rankdir = "TB";
+        auto rdIt = g.graphAttrs.find("rankdir");
+        if (rdIt != g.graphAttrs.end()) rankdir = rdIt->second;
+
+        if (rankdir == "LR" || rankdir == "RL") {
+            float midX = (pf.x + pt.x) / 2;
+            path = "M" + f2s(pf.x) + "," + f2s(pf.y) 
+                 + " L" + f2s(midX) + "," + f2s(pf.y)
+                 + " L" + f2s(midX) + "," + f2s(pt.y)
+                 + " L" + f2s(pt.x) + "," + f2s(pt.y);
+        } else {
+            float midY = (pf.y + pt.y) / 2;
+            path = "M" + f2s(pf.x) + "," + f2s(pf.y) 
+                 + " L" + f2s(pf.x) + "," + f2s(midY)
+                 + " L" + f2s(pt.x) + "," + f2s(midY)
+                 + " L" + f2s(pt.x) + "," + f2s(pt.y);
+        }
+        lx = (pf.x + pt.x) / 2;
+        ly = (pf.y + pt.y) / 2;
+    } else {
+        // curved / true / bezier
+        float mx = (pf.x + pt.x) / 2, my = (pf.y + pt.y) / 2;
+        float dx = pt.x - pf.x, dy = pt.y - pf.y;
+        float len = std::sqrt(dx*dx + dy*dy);
+        if (len < 0.1f) len = 1;
+        float off = std::min(len * 0.1f, 15.0f);
+        float nx = -dy / len * off, ny = dx / len * off;
+        cx = mx + nx; cy = my + ny;
+        path = "M" + f2s(pf.x) + "," + f2s(pf.y) + " Q" + f2s(cx) + "," + f2s(cy) + " " + f2s(pt.x) + "," + f2s(pt.y);
+        lx = (pf.x + 2*cx + pt.x) / 4;
+        ly = (pf.y + 2*cy + pt.y) / 4;
+    }
 
     std::ostringstream o;
     std::string arrowId = "a" + std::to_string(idx);
@@ -708,9 +748,28 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
     o << "<path d=\"" << path << "\" fill=\"none\" stroke=\"transparent\" stroke-width=\"14\" style=\"cursor:pointer\"/>";
 
     if (!e.label.empty()) {
-        float lx = (pf.x + 2*cx + pt.x) / 4, ly = (pf.y + 2*cy + pt.y) / 4;
-        o << "<rect x=\"" << f2s(lx - 20) << "\" y=\"" << f2s(ly - 8) << "\" width=\"40\" height=\"16\" fill=\"var(--bg-primary,#0a0a0f)\" rx=\"3\" style=\"pointer-events:none\"/>";
-        o << "<text text-anchor=\"middle\" dominant-baseline=\"central\" x=\"" << f2s(lx) << "\" y=\"" << f2s(ly) << "\" fill=\"" << esc(e.style.fontColor) << "\" font-family=\"" << esc(e.style.fontFamily) << "\" font-size=\"" << f2s(e.style.fontSize) << "\" style=\"pointer-events:none\">" << esc(e.label) << "</text>";
+        std::string relpos = "center";
+        auto rpIt = e.attrs.find("relpos");
+        if (rpIt != e.attrs.end()) {
+            relpos = rpIt->second;
+            if (!relpos.empty() && relpos.front() == '"') relpos = relpos.substr(1, relpos.length() - 2);
+        }
+
+        float fLx = lx, fLy = ly;
+        if (relpos == "side") {
+            float dx = pt.x - pf.x, dy = pt.y - pf.y;
+            float len = std::sqrt(dx*dx + dy*dy);
+            if (len > 0.01f) {
+                // Orthogonal vector
+                float nx = -dy / len;
+                float ny = dx / len;
+                fLx += nx * 24.0f;
+                fLy += ny * 24.0f;
+            }
+        }
+
+        o << "<rect x=\"" << f2s(fLx - 20) << "\" y=\"" << f2s(fLy - 8) << "\" width=\"40\" height=\"16\" fill=\"var(--bg-primary,#0a0a0f)\" rx=\"3\" style=\"pointer-events:none\"/>";
+        o << "<text text-anchor=\"middle\" dominant-baseline=\"central\" x=\"" << f2s(fLx) << "\" y=\"" << f2s(fLy) << "\" fill=\"" << esc(e.style.fontColor) << "\" font-family=\"" << esc(e.style.fontFamily) << "\" font-size=\"" << f2s(e.style.fontSize) << "\" style=\"pointer-events:none\">" << esc(e.label) << "</text>";
     }
     o << "</g>\n";
     return o.str();

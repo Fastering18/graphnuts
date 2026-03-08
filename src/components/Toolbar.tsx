@@ -15,6 +15,7 @@ interface Props {
     mode: CanvasMode;
     onModeChange: (mode: CanvasMode) => void;
     onCenterView: () => void;
+    onShare: () => void;
     showExplorer: boolean;
     showEditor: boolean;
     showPreview: boolean;
@@ -25,7 +26,7 @@ interface Props {
 
 export default function Toolbar({
     filename, dot, svgRef, onFilenameChange, onDotChange, onLayout,
-    mode, onModeChange, onCenterView,
+    mode, onModeChange, onCenterView, onShare,
     showExplorer, showEditor, showPreview,
     onToggleExplorer, onToggleEditor, onTogglePreview
 }: Props) {
@@ -84,7 +85,8 @@ export default function Toolbar({
 
             <div className="toolbar-group">
                 <button className="btn btn-secondary" onClick={handleOpen}>📂 Open</button>
-                <button className="btn btn-secondary" onClick={handleSave}>💾 Save</button>
+                <button className="btn btn-secondary" onClick={handleSave}>💾 Save File</button>
+                <button className="btn btn-primary" onClick={onShare}>🌐 Share</button>
             </div>
 
             <div className="toolbar-spacer" />

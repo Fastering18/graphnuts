@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Grafnuts ✦
+
+Grafnuts is an ultra-fast, WASM-powered Graphviz diagram editor built with Next.js and Convex. It supports **true real-time drag & drop logic** where edge connections visually adapt instantly to node movements via DOM transformation, with Graphviz providing the backbone layout logic on demand.
+
+![Grafnuts UI Layout Demo](./public/demo.webp)
+
+## Features
+
+- **Blazing Fast Custom WASM Engine:** A custom-compiled C++ Graphviz engine ensures near-instant compilation times, running completely client-side.
+- **Real-Time Client-Side Dragging:** Experience completely lag-free dragging. Node dragging surgically manipulates SVG `<path>` vectors without awaiting costly layout re-evaluations.
+- **Collaborative Real-Time Editing:** Synchronized with Convex backend for live diagram sharing and changes syncing between users.
+- **Hybrid Code-and-Canvas Experience:** Integrated Ace/CodeMirror editor working alongside the D3-zoomable viewing UI.
+- **Robust Import/Export Tools:** Export diagrams flawlessly as PNG, JPG, PDF, or SVG. Load existing `.gv` or `.dot` files directly into the editor.
+- **Full Customizability:** Right-click context menus built directly on the canvas space allow for changing node shapes (Rect, Circle, Cylinder, Diamond) or edge styles (Bold, Dotted, Dashed) instantly.
 
 ## Getting Started
 
-First, run the development server:
+1. Set up your `.env` variables ensuring `NEXT_PUBLIC_CONVEX_URL` and `CONVEX_DEPLOY_KEY` are configured.
+2. If using GitHub authentication, also configure `GIT_CLIENT_ID` and `GIT_CLIENT_SECRET`.
+
+Ensure you have **Bun** installed globally:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to try it locally.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## License
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

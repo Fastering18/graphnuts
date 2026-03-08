@@ -520,6 +520,32 @@ a {
   color: var(--text-muted);
 }
 
+/* ── Mobile Responsiveness (Landing & Dashboard) ── */
+@media (max-width: 768px) {
+  .landing-content {
+    padding: 60px 16px;
+  }
+
+  .landing h1 {
+    font-size: 36px;
+  }
+
+  .landing-subtitle {
+    font-size: 16px;
+    margin-bottom: 32px;
+  }
+
+  .landing-actions {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .landing-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* ── Layout ───────────────────────────────────── */
 .editor-layout {
   display: flex;
@@ -535,8 +561,8 @@ a {
 
 /* ── Explorer ─────────────────────────────────── */
 .explorer {
-  width: 220px;
-  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
