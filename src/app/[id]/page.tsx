@@ -283,8 +283,10 @@ export default function EditorPage() {
                 setSelection(new Set());
                 return;
             }
-            if ((e.key === "Delete" || e.key === "Backspace") && !inEditor) { e.preventDefault(); handleDelete(); return; }
-            if (e.key === "a" && (e.ctrlKey || e.metaKey) && !inEditor) { e.preventDefault(); handleSelectAll(); return; }
+            const activeTag = document.activeElement?.tagName.toLowerCase();
+            const inInput = activeTag === "input" || activeTag === "textarea";
+            if ((e.key === "Delete" || e.key === "Backspace") && !inEditor && !inInput) { e.preventDefault(); handleDelete(); return; }
+            if (e.key === "a" && (e.ctrlKey || e.metaKey) && !inEditor && !inInput) { e.preventDefault(); handleSelectAll(); return; }
             if (e.key === "s" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); downloadText(dot, filename); return; }
             if (e.key === "e" && (e.ctrlKey || e.metaKey) && !inEditor) { e.preventDefault(); setShowExplorer((p) => !p); return; }
             if (e.key === "h" && !inEditor && !(e.ctrlKey || e.metaKey)) { setMode("pan"); return; }

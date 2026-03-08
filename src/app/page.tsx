@@ -86,10 +86,29 @@ export default function LandingPage() {
         {status === "loading" ? (
           <div style={{ color: "#888" }}>Loading...</div>
         ) : session ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 14 }}>{session.user?.name} ({(session.user as any)?.role})</span>
-            {session.user?.image && <img src={session.user.image} alt="" style={{ width: 32, height: 32, borderRadius: "50%" }} />}
-            <button className="btn btn-secondary" onClick={() => signOut()}>Sign Out</button>
+          <div className="dropdown" style={{ position: "relative" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: "var(--bg-secondary)", padding: "4px 12px 4px 4px", borderRadius: 20, border: "1px solid var(--border)", boxShadow: "var(--shadow)", transition: "0.2s" }} onClick={(e) => {
+              const menu = e.currentTarget.nextElementSibling;
+              menu?.classList.toggle("open");
+            }}>
+              <img
+                src={session.user?.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.user?.name || session.user?.email || "U")}&background=random`}
+                alt=""
+                style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", objectFit: "cover" }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{session.user?.name || "Account"} ▾</span>
+            </div>
+            <div className="dropdown-menu" style={{ right: 0, left: "auto", top: "100%", marginTop: 8, minWidth: 200, padding: 8 }}>
+              <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)", marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{session.user?.name || "User Account"}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all" }}>{session.user?.email || "No email provided"}</div>
+                {(session.user as any)?.role === "admin" && (
+                  <div style={{ marginTop: 6, display: "inline-block", fontSize: 10, padding: "2px 6px", background: "var(--accent-glow)", color: "var(--accent)", borderRadius: 8, border: "1px solid var(--accent)", textTransform: "uppercase", fontWeight: "bold" }}>Admin</div>
+                )}
+              </div>
+              <button className="dropdown-item" onClick={() => window.location.href = "/"}>Dashboard</button>
+              <button className="dropdown-item" onClick={() => signOut()} style={{ color: "var(--danger)" }}>Sign Out</button>
+            </div>
           </div>
         ) : (
           <Link href="/login" className="btn btn-primary">Sign In</Link>

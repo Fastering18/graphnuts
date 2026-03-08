@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import type { CanvasMode } from "@/components/GraphCanvas";
 import { LAYOUT_OPTIONS, type LayoutMode } from "@/lib/auto-layout";
 import { loadFile, downloadText, downloadSvg, downloadImage, downloadPdf } from "@/lib/file-io";
+import { signOut } from "next-auth/react";
 
 interface Props {
     filename: string;
@@ -141,21 +142,31 @@ export default function Toolbar({
             {user && (
                 <>
                     <div className="toolbar-separator" />
-                    <div className="toolbar-group" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        {isOwner && (
-                            <span
-                                title="You are the owner of this graph"
-                                style={{ fontSize: 11, fontWeight: "bold", color: "var(--accent)", padding: "4px 8px", background: "var(--accent-glow)", borderRadius: 12, border: "1px solid var(--accent)", textTransform: "uppercase", letterSpacing: 0.5 }}
-                            >
-                                Owner
-                            </span>
-                        )}
-                        <img
-                            src={user.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || "U")}&background=random`}
-                            alt="Profile"
-                            style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", objectFit: "cover" }}
-                            title={user.name || user.email || "User Profile"}
-                        />
+                    <div className="dropdown">
+                        <div className="toolbar-group" style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", padding: "2px 8px 2px 2px", borderRadius: 20, background: openMenu === "profile" ? "var(--bg-tertiary)" : "transparent", transition: "0.2s" }} onClick={() => toggle("profile")}>
+                            {isOwner && (
+                                <span
+                                    title="You are the owner of this graph"
+                                    style={{ fontSize: 10, fontWeight: "bold", color: "var(--accent)", padding: "2px 6px", background: "var(--accent-glow)", borderRadius: 12, border: "1px solid var(--accent)", textTransform: "uppercase", letterSpacing: 0.5, marginLeft: 8 }}
+                                >
+                                    Owner
+                                </span>
+                            )}
+                            <img
+                                src={user.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || "U")}&background=random`}
+                                alt="Profile"
+                                style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", objectFit: "cover" }}
+                                title={user.name || user.email || "User Profile"}
+                            />
+                        </div>
+                        <div className={`dropdown-menu ${openMenu === "profile" ? "open" : ""}`} style={{ right: 0, left: "auto", minWidth: 200, padding: 8 }}>
+                            <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)", marginBottom: 4 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{user.name || "User Account"}</div>
+                                <div style={{ fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all" }}>{user.email || "No email provided"}</div>
+                            </div>
+                            <button className="dropdown-item" onClick={() => { setOpenMenu(null); window.location.href = "/"; }}>Home Dashboard</button>
+                            <button className="dropdown-item" onClick={() => signOut({ callbackUrl: '/' })} style={{ color: "var(--danger)" }}>Sign Out</button>
+                        </div>
                     </div>
                 </>
             )}
