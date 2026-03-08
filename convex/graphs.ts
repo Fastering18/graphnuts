@@ -26,10 +26,13 @@ export const saveGraph = mutation({
         userId: v.optional(v.string()),
         title: v.string(),
         dotSource: v.string(),
-        isPublic: v.boolean(),
+        isPublic: v.optional(v.boolean()),
         isPublicEditable: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
+        const isPublic = args.isPublic ?? false;
+        const isPublicEditable = args.isPublicEditable ?? false;
+
         if (args.id) {
             // Update existing
             const existing = await ctx.db.get(args.id);
@@ -44,8 +47,8 @@ export const saveGraph = mutation({
             await ctx.db.patch(args.id, {
                 title: args.title,
                 dotSource: args.dotSource,
-                isPublic: args.isPublic,
-                isPublicEditable: args.isPublicEditable !== undefined ? args.isPublicEditable : existing.isPublicEditable,
+                isPublic,
+                isPublicEditable,
             });
             return args.id;
         } else {
@@ -54,8 +57,8 @@ export const saveGraph = mutation({
                 userId: args.userId,
                 title: args.title,
                 dotSource: args.dotSource,
-                isPublic: args.isPublic,
-                isPublicEditable: args.isPublicEditable ?? true,
+                isPublic,
+                isPublicEditable,
             });
         }
     },

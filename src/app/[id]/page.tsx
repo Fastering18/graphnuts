@@ -78,6 +78,9 @@ export default function EditorPage() {
         if (typeof window !== "undefined") return sessionStorage.getItem(`gn_name_${id}`) || "untitled.gn";
         return "untitled.gn";
     });
+
+    // Manage Cloud Save Status UI
+    const [saveStatus, setSaveStatus] = useState<"unsaved" | "saving" | "saved">("saved");
     const [showShare, setShowShare] = useState(false);
 
     const remoteDot = useRef<string | null>(null);
@@ -86,17 +89,27 @@ export default function EditorPage() {
     // Populate from Convex once loaded
     useEffect(() => {
         if (graphData && isConvexId) {
-            // Synchronize if this is the first load, OR if we haven't typed locally
-            if (remoteDot.current === null || dot === remoteDot.current) {
+            if (remoteDot.current === null) {
                 setDot(graphData.dotSource);
-                remoteDot.current = graphData.dotSource;
-            }
-            if (remoteTitle.current === null || filename === remoteTitle.current) {
                 setFilename(graphData.title);
+                remoteDot.current = graphData.dotSource;
                 remoteTitle.current = graphData.title;
+                setSaveStatus("saved");
+            } else if (graphData.dotSource !== remoteDot.current || graphData.title !== remoteTitle.current) {
+                // If the remote graph was updated by SOMEONE ELSE, and we aren't actively typing...
+                const dotClean = dot === remoteDot.current;
+                const titleClean = filename === remoteTitle.current;
+
+                if (dotClean && titleClean) {
+                    setDot(graphData.dotSource);
+                    setFilename(graphData.title);
+                    remoteDot.current = graphData.dotSource;
+                    remoteTitle.current = graphData.title;
+                    setSaveStatus("saved");
+                }
             }
         }
-    }, [graphData, isConvexId]);
+    }, [graphData, isConvexId, dot, filename]);
 
     const [engine] = useState("gn");
     const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -114,21 +127,39 @@ export default function EditorPage() {
     useEffect(() => {
         sessionStorage.setItem(`gn_${id}`, dot);
 
+        // If it differs from the last known remote config, mark as unsaved
+        if (dot !== remoteDot.current || filename !== remoteTitle.current) {
+            setSaveStatus("unsaved");
+        }
+
         const canEdit = isConvexId && session?.user?.id && (
             session.user.id === graphData?.userId || graphData?.isPublicEditable
         );
 
-        if (canEdit) {
+        if (canEdit && (dot !== remoteDot.current || filename !== remoteTitle.current)) {
             const timer = setTimeout(() => {
-                remoteDot.current = dot;
-                remoteTitle.current = filename;
+                setSaveStatus("saving");
+                const currentDot = dot;
+                const currentFilename = filename;
+                remoteDot.current = currentDot;
+                remoteTitle.current = currentFilename;
+
                 saveGraph({
                     id: id as Id<"graphs">,
-                    title: filename,
-                    dotSource: dot,
-                    isPublic: graphData?.isPublic ?? false,
-                    isPublicEditable: graphData?.isPublicEditable ?? false,
-                }).catch(err => console.error("Save failed", err));
+                    userId: session?.user?.id,
+                    title: currentFilename,
+                    dotSource: currentDot,
+                    isPublic: Boolean(graphData?.isPublic),
+                    isPublicEditable: Boolean(graphData?.isPublicEditable),
+                }).then(() => {
+                    // Only mark saved if we haven't typed more
+                    if (currentDot === dot && currentFilename === filename) {
+                        setSaveStatus("saved");
+                    }
+                }).catch(err => {
+                    console.error("Save failed", err);
+                    setSaveStatus("unsaved");
+                });
             }, 1000);
             return () => clearTimeout(timer);
         }
@@ -328,7 +359,7 @@ export default function EditorPage() {
                                         type="checkbox"
                                         checked={graphData?.isPublic || false}
                                         onChange={async (e) => {
-                                            await saveGraph({ id: id as Id<"graphs">, title: filename, dotSource: dot, isPublic: e.target.checked, isPublicEditable: graphData?.isPublicEditable || false });
+                                            await saveGraph({ id: id as Id<"graphs">, userId: session?.user?.id, title: filename, dotSource: dot, isPublic: e.target.checked, isPublicEditable: Boolean(graphData?.isPublicEditable) });
                                         }}
                                     />
                                     Anyone with link can view
@@ -338,7 +369,7 @@ export default function EditorPage() {
                                         type="checkbox"
                                         checked={graphData?.isPublicEditable || false}
                                         onChange={async (e) => {
-                                            await saveGraph({ id: id as Id<"graphs">, title: filename, dotSource: dot, isPublic: graphData?.isPublic || false, isPublicEditable: e.target.checked });
+                                            await saveGraph({ id: id as Id<"graphs">, userId: session?.user?.id, title: filename, dotSource: dot, isPublic: Boolean(graphData?.isPublic), isPublicEditable: e.target.checked });
                                         }}
                                         disabled={!graphData?.isPublic}
                                     />
@@ -361,6 +392,9 @@ export default function EditorPage() {
             <Toolbar
                 filename={filename}
                 dot={dot}
+                saveStatus={saveStatus}
+                user={session?.user}
+                isOwner={session?.user?.id === graphData?.userId}
                 svgRef={{ current: canvasRef.current?.getSvg() ?? null } as React.RefObject<SVGSVGElement | null>}
                 onFilenameChange={setFilename}
                 onDotChange={(newDot) => setDot(newDot)}

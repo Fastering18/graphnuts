@@ -8,6 +8,9 @@ import { loadFile, downloadText, downloadSvg, downloadImage, downloadPdf } from 
 interface Props {
     filename: string;
     dot: string;
+    saveStatus?: "unsaved" | "saving" | "saved";
+    user?: { name?: string | null; email?: string | null; image?: string | null };
+    isOwner?: boolean;
     svgRef: React.RefObject<SVGSVGElement | null>;
     onFilenameChange: (name: string) => void;
     onDotChange: (dot: string) => void;
@@ -25,7 +28,7 @@ interface Props {
 }
 
 export default function Toolbar({
-    filename, dot, svgRef, onFilenameChange, onDotChange, onLayout,
+    filename, dot, saveStatus = "saved", user, isOwner, svgRef, onFilenameChange, onDotChange, onLayout,
     mode, onModeChange, onCenterView, onShare,
     showExplorer, showEditor, showPreview,
     onToggleExplorer, onToggleEditor, onTogglePreview
@@ -65,12 +68,21 @@ export default function Toolbar({
     return (
         <div className="toolbar" ref={menuRef}>
             <a href="/" className="btn btn-icon" title="Home">🏠</a>
-            <input
-                className="toolbar-filename"
-                value={filename}
-                onChange={(e) => onFilenameChange(e.target.value)}
-                spellCheck={false}
-            />
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <input
+                    className="toolbar-filename"
+                    value={filename}
+                    onChange={(e) => onFilenameChange(e.target.value)}
+                    spellCheck={false}
+                    disabled={saveStatus === "saving"}
+                    style={{ paddingRight: 32 }}
+                />
+                <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex", opacity: 0.7 }}>
+                    {saveStatus === "saved" && <span title="Cloud Saved" style={{ color: "var(--success)" }}>✓</span>}
+                    {saveStatus === "saving" && <span title="Saving..." style={{ color: "var(--accent)", animation: "pulse 1s infinite" }}>↻</span>}
+                    {saveStatus === "unsaved" && <span title="Unsaved changes" style={{ color: "var(--warning)", fontSize: 18, lineHeight: 0.8 }}>•</span>}
+                </div>
+            </div>
             <div className="toolbar-separator" />
 
             <div className="mode-toggle">
@@ -125,6 +137,28 @@ export default function Toolbar({
                     ))}
                 </div>
             </div>
+
+            {user && (
+                <>
+                    <div className="toolbar-separator" />
+                    <div className="toolbar-group" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        {isOwner && (
+                            <span
+                                title="You are the owner of this graph"
+                                style={{ fontSize: 11, fontWeight: "bold", color: "var(--accent)", padding: "4px 8px", background: "var(--accent-glow)", borderRadius: 12, border: "1px solid var(--accent)", textTransform: "uppercase", letterSpacing: 0.5 }}
+                            >
+                                Owner
+                            </span>
+                        )}
+                        <img
+                            src={user.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email || "U")}&background=random`}
+                            alt="Profile"
+                            style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", objectFit: "cover" }}
+                            title={user.name || user.email || "User Profile"}
+                        />
+                    </div>
+                </>
+            )}
         </div>
     );
 }
