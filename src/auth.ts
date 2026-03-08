@@ -70,12 +70,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         async signIn({ user, account, profile }) {
             if (user && user.id) {
                 // Sync user to Convex on login
-                await convex.mutation(api.users.syncUser, {
+                const syncedUser = await convex.mutation(api.users.syncUser, {
                     id: user.id,
+                    githubId: account?.provider === "github" ? account.providerAccountId : undefined,
                     name: user.name ?? undefined,
                     email: user.email ?? undefined,
                     image: user.image ?? undefined,
                 });
+
+                // Crucial: Override the NextAuth user.id with the canonical Convex Database ID 
+                // returned by the sync mutation. This ensures that when linking accounts, 
+                // the session inherits the existing User's ID rather than creating a split brain.
+                if (syncedUser) {
+                    user.id = syncedUser.id;
+                }
             }
             return true;
         },
