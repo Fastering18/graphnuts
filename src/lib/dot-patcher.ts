@@ -51,7 +51,7 @@ export function renameNodeInDot(dot: string, oldId: string, newId: string): stri
 
 export function patchEdgeStyle(dot: string, from: string, to: string, style: string): string {
     const ef = escapeRegex(from), et = escapeRegex(to);
-    const re = new RegExp(`(^[ \\t]*${ef}\\s*->\\s*${et}\\s*\\[)([^\\]]*)(\\])`, "m");
+    const re = new RegExp(`(^[ \\t]*"?(?:${ef})"?[ \\t]*->[ \\t]*"?(?:${et})"?\\s*\\[)([^\\]]*)(\\])`, "m");
     const m = dot.match(re);
     if (m) {
         const attrs = m[2];
@@ -59,7 +59,7 @@ export function patchEdgeStyle(dot: string, from: string, to: string, style: str
         const updated = sp.test(attrs) ? attrs.replace(sp, `style=${style}`) : `style=${style} ${attrs}`;
         return dot.replace(re, `$1${updated}$3`);
     }
-    const re2 = new RegExp(`(^[ \\t]*${ef}\\s*->\\s*${et})\\s*$`, "m");
+    const re2 = new RegExp(`(^[ \\t]*"?(?:${ef})"?[ \\t]*->[ \\t]*"?(?:${et})"?)[ \\t]*$`, "m");
     if (dot.match(re2)) return dot.replace(re2, `$1 [style=${style}]`);
     return dot;
 }

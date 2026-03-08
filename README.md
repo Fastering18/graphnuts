@@ -1,8 +1,19 @@
-# Grafnuts ✦
+# Grafnuts ✦  
+https://graphnuts.vercel.app/  
 
 Grafnuts is an ultra-fast, WASM-powered Graphviz diagram editor built with Next.js and Convex. It supports **true real-time drag & drop logic** where edge connections visually adapt instantly to node movements via DOM transformation, with Graphviz providing the backbone layout logic on demand.
 
-![Grafnuts UI Layout Demo](./public/demo.webp)
+<p align="center">
+  <img src="./public/demo.webp" alt="Grafnuts Application Preview" width="100%" />
+</p>
+
+## Real-time Code & UI Sync
+Grafnuts relies on a bespoke WebAssembly Engine combined with D3 SVG math tracking to give Graphviz shapes native drag-and-drop mechanics.  
+
+<p align="center">
+  <img src="./public/interactive_features_test.webp" alt="Real time layout adjustments Demo" width="48%" />
+  <img src="./public/final_check_wasm.webp" alt="Dragging and Node Connection Logic Demo" width="48%" />
+</p>
 
 ## Features
 
@@ -18,7 +29,7 @@ Grafnuts is an ultra-fast, WASM-powered Graphviz diagram editor built with Next.
 1. Set up your `.env` variables ensuring `NEXT_PUBLIC_CONVEX_URL` and `CONVEX_DEPLOY_KEY` are configured.
 2. If using GitHub authentication, also configure `GIT_CLIENT_ID` and `GIT_CLIENT_SECRET`.
 
-Ensure you have **Bun** installed globally:
+Ensure you have **bun** or **node** installed:
 
 ```bash
 bun install

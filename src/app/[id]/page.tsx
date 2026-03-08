@@ -259,9 +259,9 @@ export default function EditorPage() {
             } else {
                 const lastBraceIdx = lines.findLastIndex(l => l.trim() === "}");
                 if (lastBraceIdx !== -1) {
-                    lines.splice(lastBraceIdx, 0, `    ${nodeCtx.id} [shape=${shape}]`);
+                    lines.splice(lastBraceIdx, 0, `    "${nodeCtx.id}" [shape=${shape}]`);
                 } else {
-                    lines.push(`    ${nodeCtx.id} [shape=${shape}]`);
+                    lines.push(`    "${nodeCtx.id}" [shape=${shape}]`);
                 }
             }
             return lines.join("\n");
