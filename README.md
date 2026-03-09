@@ -26,7 +26,7 @@ Grafnuts relies on a bespoke WebAssembly Engine combined with D3 SVG math tracki
 
 ## Getting Started
 
-1. Set up your `.env` variables ensuring `NEXT_PUBLIC_CONVEX_URL` and `CONVEX_DEPLOY_KEY` are configured.
+1. Set up your `.env` variables ensuring `NEXT_PUBLIC_CONVEX_URL` or `CONVEX_DEPLOY_KEY` are configured.
 2. If using GitHub authentication, also configure `GIT_CLIENT_ID` and `GIT_CLIENT_SECRET`.
 
 Ensure you have **bun** or **node** installed:

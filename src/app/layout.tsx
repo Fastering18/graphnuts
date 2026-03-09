@@ -26,12 +26,16 @@ export const metadata: Metadata = {
 };
 
 import Providers from "@/components/Providers";
+import { Toaster } from "sonner";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={inter.variable}>
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <Toaster theme="dark" position="bottom-right" />
+        </Providers>
       </body>
     </html>
   );

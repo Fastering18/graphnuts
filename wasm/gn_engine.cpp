@@ -42,7 +42,7 @@ struct Node {
 };
 
 struct Edge {
-    std::string from, to, label;
+    std::string from, fromPort, to, toPort, label;
     EdgeStyle style;
     std::map<std::string, std::string> attrs;
 };
@@ -148,10 +148,18 @@ class Parser {
         return t.value;
     }
 
-    std::string readNodeId() {
-        std::string id = readId();
-        while (peek().type == T_COLON) { next(); if (isId()) readId(); }
-        return id;
+    struct NodeId {
+        std::string id, port;
+    };
+
+    NodeId readNodeId() {
+        NodeId nid;
+        nid.id = readId();
+        while (peek().type == T_COLON) { 
+            next(); 
+            if (isId()) nid.port = readId(); 
+        }
+        return nid;
     }
 
     std::string stripHtml(const std::string& s) {
@@ -358,19 +366,22 @@ class Parser {
 
         // Node or edge chain
         if (isId()) {
-            std::vector<std::string> ids = { readNodeId() };
+            std::vector<NodeId> ids = { readNodeId() };
             TType arrowType = g.directed ? T_ARROW : T_DASH;
             while (peek().type == arrowType) { next(); ids.push_back(readNodeId()); }
             auto attrs = (peek().type == T_LBRACK) ? parseAttrs() : std::map<std::string, std::string>{};
 
             if (ids.size() == 1) {
-                ensureNode(ids[0], attrs, clusterId);
+                ensureNode(ids[0].id, attrs, clusterId);
             } else {
                 for (size_t i = 0; i + 1 < ids.size(); i++) {
-                    ensureNode(ids[i], {}, clusterId);
-                    ensureNode(ids[i+1], {}, clusterId);
+                    ensureNode(ids[i].id, {}, clusterId);
+                    ensureNode(ids[i+1].id, {}, clusterId);
                     Edge e;
-                    e.from = ids[i]; e.to = ids[i+1];
+                    e.from = ids[i].id;
+                    e.fromPort = ids[i].port;
+                    e.to = ids[i+1].id;
+                    e.toPort = ids[i+1].port;
                     auto labelIt = attrs.find("label");
                     if (labelIt != attrs.end()) {
                         e.label = labelIt->second;
@@ -602,7 +613,36 @@ static Pt diamondBorder(float cx, float cy, float hw, float hh, float dx, float 
     return {cx + dx * t, cy + dy * t};
 }
 
-static Pt borderPt(const Node& n, float tx, float ty) {
+static Pt getPortPt(const Node& n, const std::string& port) {
+    float hw = n.w/2, hh = n.h/2;
+    if (port == "n") return {n.x, n.y - hh};
+    if (port == "s") return {n.x, n.y + hh};
+    if (port == "e") return {n.x + hw, n.y};
+    if (port == "w") return {n.x - hw, n.y};
+    if (port == "ne") return {n.x + hw, n.y - hh};
+    if (port == "se") return {n.x + hw, n.y + hh};
+    if (port == "nw") return {n.x - hw, n.y - hh};
+    if (port == "sw") return {n.x - hw, n.y + hh};
+    return {n.x, n.y}; // fallback
+}
+
+static Pt borderPt(const Node& n, float tx, float ty, const std::string& port = "") {
+    if (!port.empty() && port != "c" && port != "_") {
+        if (n.shape == "ellipse" || n.shape == "oval" || n.shape == "circle" || n.shape == "doublecircle") {
+            float hw = n.w/2, hh = n.h/2;
+            if (port == "n") return {n.x, n.y - hh};
+            if (port == "s") return {n.x, n.y + hh};
+            if (port == "e") return {n.x + hw, n.y};
+            if (port == "w") return {n.x - hw, n.y};
+            float a = 0;
+            if (port == "ne") a = -M_PI/4;
+            else if (port == "nw") a = -3*M_PI/4;
+            else if (port == "se") a = M_PI/4;
+            else if (port == "sw") a = 3*M_PI/4;
+            return {n.x + hw * std::cos(a), n.y + hh * std::sin(a)};
+        }
+        return getPortPt(n, port);
+    }
     float dx = tx - n.x, dy = ty - n.y;
     float hw = n.w / 2, hh = n.h / 2;
     if (n.shape == "ellipse" || n.shape == "oval" || n.shape == "circle" || n.shape == "doublecircle")
@@ -682,8 +722,11 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
     const Node& fn = fromIt->second;
     const Node& tn = toIt->second;
 
-    Pt pf = borderPt(fn, tn.x, tn.y);
-    Pt pt = borderPt(tn, fn.x, fn.y);
+    Pt tempT = e.toPort.empty() || e.toPort == "c" || e.toPort == "_" ? Pt{tn.x, tn.y} : borderPt(tn, fn.x, fn.y, e.toPort);
+    Pt tempF = e.fromPort.empty() || e.fromPort == "c" || e.fromPort == "_" ? Pt{fn.x, fn.y} : borderPt(fn, tn.x, tn.y, e.fromPort);
+
+    Pt pf = borderPt(fn, tempT.x, tempT.y, e.fromPort);
+    Pt pt = borderPt(tn, tempF.x, tempF.y, e.toPort);
 
     std::string splines = "curved"; // default
     auto splinesIt = g.graphAttrs.find("splines");

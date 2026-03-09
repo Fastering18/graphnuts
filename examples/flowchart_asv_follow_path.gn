@@ -1,0 +1,105 @@
+digraph G {
+    graph [rankdir=TD bgcolor="#0f172a" fontname="Inter, sans-serif" pad=0.5]
+    node [shape=rect style="filled,rounded" fillcolor="#1e293b" color="#334155" fontname="Inter, sans-serif" fontcolor="#f8fafc" margin="0.3,0.2"]
+    edge [color="#64748b" fontname="Inter, sans-serif" fontcolor="#94a3b8" penwidth=1.5]
+
+    // Start
+    Init [label="Init Node\n(YOLOAnnotator)" shape=ellipse fillcolor="#059669" color="#047857"]
+    Sync [label="ApproximateTimeSynchronizer\n(LIDAR & Camera)"]
+    Callback [label="listener_callback(image, lidar)"]
+
+    // Processing Steps
+    ProcessImg [label="YOLOv8 Inference\n(Detect Buoys & Obstacles)"]
+    ProcessLidar [label="Extract PointCloud2\nFind closest front point"]
+    DrawLines [label="Draw Horizontal & Vertical Lines\nSplit Image (Left, Center, Right)"]
+
+    // Object Counting
+    CountRed [label="Count Red Buoys\n(Left, Center, Right)"]
+    CountGreen [label="Count Green Buoys\n(Left, Center, Right)"]
+    CountObstacles [label="Count Black/Yellow Obstacles"]
+    
+    // Path Check
+    CheckPath [label="Path Finished?" shape=diamond fillcolor="#0f766e" color="#115e59"]
+    UpdatePathState [label="Update empty_frames_count\nSet finished_path=True if count > threshold"]
+
+    // Thrust Logic (Path Not Finished)
+    LidarAvoid [label="Emergency Avoidance?\n(Lidar < Threshold)" shape=diamond fillcolor="#0f766e" color="#115e59"]
+    LidarTurn [label="Urgent Turn\n(Away from Lidar point)"]
+
+    RedAvoid [label="Red Buoys Detected?" shape=diamond fillcolor="#0f766e" color="#115e59"]
+    RedTurn [label="Turn Right\n(Sharp, Urgent, Normal) based on zone"]
+
+    GreenAvoid [label="Green Buoys Detected?" shape=diamond fillcolor="#0f766e" color="#115e59"]
+    GreenTurn [label="Turn Left\n(Sharp, Urgent, Normal) based on zone"]
+
+    BlackYellowAvoid [label="Obstacles Detected?" shape=diamond fillcolor="#0f766e" color="#115e59"]
+    BlackYellowTurn [label="Turn Away from Obstacle"]
+
+    CalcThrust [label="Calculate Left/Right Thrust\n(Base Speed ± Differential)"]
+
+    // Thrust Logic (Path Finished - Spin Mode)
+    CheckSpin [label="Total Black > 0?" shape=diamond fillcolor="#0f766e" color="#115e59"]
+    SpinRight [label="Spin 360 Right"]
+    CheckSpinYellow [label="Total Yellow > 0?" shape=diamond fillcolor="#0f766e" color="#115e59"]
+    SpinLeft [label="Spin 360 Left"]
+    StopSpin [label="Stop Motors\n(Thrust = 0)"]
+
+    // Output
+    PublishThrust [label="Publish to Thrusters\n(/left/thrust & /right/thrust)"]
+    PublishImg [label="Publish Annotated Image"]
+
+
+    // Connections
+    Init -> Sync
+    Sync -> Callback
+    Callback -> ProcessImg
+    Callback -> ProcessLidar
+    ProcessImg -> DrawLines
+    ProcessLidar -> DrawLines
+    
+    DrawLines -> CountRed
+    DrawLines -> CountGreen
+    DrawLines -> CountObstacles
+    
+    CountRed -> CheckPath
+    CountGreen -> CheckPath
+    CountObstacles -> CheckPath
+
+    CheckPath -> UpdatePathState [label="No"]
+    CheckPath -> CheckSpin [label="Yes"]
+
+    // Priority checks if not finished
+    UpdatePathState -> LidarAvoid
+    
+    LidarAvoid -> LidarTurn [label="Yes"]
+    LidarAvoid -> RedAvoid [label="No"]
+    
+    RedAvoid -> RedTurn [label="Yes"]
+    RedAvoid -> GreenAvoid [label="No"]
+
+    GreenAvoid -> GreenTurn [label="Yes"]
+    GreenAvoid -> BlackYellowAvoid [label="No"]
+
+    BlackYellowAvoid -> BlackYellowTurn [label="Yes"]
+    BlackYellowAvoid -> CalcThrust [label="No"]
+
+    LidarTurn -> CalcThrust
+    RedTurn -> CalcThrust
+    GreenTurn -> CalcThrust
+    BlackYellowTurn -> CalcThrust
+
+    CalcThrust -> PublishThrust
+
+    // Spin Mode Flow
+    CheckSpin -> SpinRight [label="Yes"]
+    CheckSpin -> CheckSpinYellow [label="No"]
+    
+    CheckSpinYellow -> SpinLeft [label="Yes"]
+    CheckSpinYellow -> StopSpin [label="No"]
+
+    SpinRight -> PublishThrust
+    SpinLeft -> PublishThrust
+    StopSpin -> PublishThrust
+
+    PublishThrust -> PublishImg
+}

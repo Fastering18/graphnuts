@@ -1227,3 +1227,54 @@ a {
   font-size: 10px;
   color: var(--text-secondary);
 }
+
+/* ── Mobile Responsive Overrides ──────────────── */
+@media (max-width: 768px) {
+  .toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px;
+    gap: 4px;
+    justify-content: center;
+  }
+
+  .toolbar .btn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .toolbar-filename {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .split-pane {
+    flex-direction: column;
+  }
+
+  .split-pane-left {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    width: 100% !important;
+    height: calc(var(--split-ratio, 0.5) * 100%);
+  }
+
+  .split-divider {
+    width: 100%;
+    height: 4px;
+    cursor: row-resize;
+  }
+
+  .split-pane-right {
+    height: calc((1 - var(--split-ratio, 0.5)) * 100%);
+    width: 100%;
+  }
+
+  .status-bar {
+    font-size: 10px;
+    padding: 0 8px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}

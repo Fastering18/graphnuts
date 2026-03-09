@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs"
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL || "https://dummy-1234.convex.cloud");
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     providers: [

@@ -1,0 +1,75 @@
+digraph G {
+    graph [rankdir=TB bgcolor="#f0f2f5" fontname="Segoe UI" splines=ortho nodesep=0.8]
+    node [shape=box style="filled,rounded" fillcolor="#ffffff" fontname="Segoe UI" margin="0.25"]
+    edge [color="#555555" penwidth=1.5 fontname="Segoe UI" fontsize=10]
+
+    // Sensors
+    subgraph cluster_sensors {
+        label="Sensors"
+        style="rounded,dashed" color="#888888" bgcolor="#e2e8f0" fontname="Segoe UI Bold"
+        cam [label="Camera (Front)" fillcolor="#dbeafe"]
+        lidar [label="LiDAR (3D/2D)" fillcolor="#dbeafe"]
+        imu_gps [label="IMU & GPS\n(Odometry)" fillcolor="#dbeafe"]
+    }
+
+    // Perception & Mapping
+    subgraph cluster_perception {
+        label="Perception & Mapping"
+        style="rounded,dashed" color="#888888" bgcolor="#ede9fe" fontname="Segoe UI Bold"
+        yolo [label="YOLOv8\n(Buoy Classifier)"]
+        fusion [label="Sensor Fusion\n(Project LiDAR points into Bbox)\nCalculates relative (X, Y) of Buoys"]
+        slam [label="Local Mapping\n(Occupancy Grid & Feature Map)"]
+        state_est [label="State Estimation\n(Extended Kalman Filter)"]
+    }
+
+    // Planning & Decision Making
+    subgraph cluster_planning {
+        label="Decision & Planning (e.g., Behavior Tree / State Machine)"
+        style="rounded,dashed" color="#888888" bgcolor="#dcfce7" fontname="Segoe UI Bold"
+        
+        bt_root [label="Mission Coordinator" shape=oval fillcolor="#86efac"]
+        costmap [label="Costmap Generation\nRed/Green = Track Boundaries\nBlack/Yellow = High Cost Obstacles"]
+        local_planner [label="Local Trajectory Planner\n(e.g., TEB Local Planner or DWA)\nCalculates smooth, kinematically valid path"]
+        
+        subgraph cluster_special_tasks {
+            label="Special Maneuver Handlers"
+            style="rounded,dotted" color="#059669" bgcolor="#ffffff" fontname="Segoe UI Semibold"
+            pivot_black [label="Pivot Clockwise Node\n(Tracks degrees turned via IMU)"]
+            circle_yellow [label="Circle Counter-Clockwise Node\n(Navigates circumference)"]
+        }
+    }
+
+    // Control
+    subgraph cluster_control {
+        label="Control System"
+        style="rounded,dashed" color="#888888" bgcolor="#ffedd5" fontname="Segoe UI Bold"
+        tracker [label="Path Tracking Controller\n(Stanley / Pure Pursuit / MPC)"]
+        allocator [label="Thruster Allocation\n(Differential Drive Kinematics)"]
+        thrusters [label="Left & Right Thrusters" shape=cylinder fillcolor="#cbd5e1"]
+    }
+
+    // Connections
+    cam -> yolo [label=" Images"]
+    lidar -> fusion [label=" Point Cloud"]
+    yolo -> fusion [label=" Bounding Boxes & Classes"]
+    imu_gps -> state_est [label=" Raw Pose Data"]
+    
+    fusion -> slam [label=" Tracked Buoys (x, y)"]
+    state_est -> slam [label=" Robot Pose"]
+    
+    slam -> costmap [label=" Local Map Elements"]
+    state_est -> bt_root [label=" Real-time Odometry"]
+    
+    bt_root -> costmap [label=" Mode: Transit"]
+    bt_root -> pivot_black [label=" Trigger: Black Buoy"]
+    bt_root -> circle_yellow [label=" Trigger: Yellow Buoy"]
+    
+    costmap -> local_planner [label=" Navigable Space"]
+    local_planner -> tracker [label=" Smooth Trajectory"]
+    
+    pivot_black -> allocator [label=" Direct Twist Cmd"]
+    circle_yellow -> allocator [label=" Direct Twist / Target Pose"]
+    tracker -> allocator [label=" Target Twist (v, ω)"]
+    
+    allocator -> thrusters [label=" PWM Signals"]
+}

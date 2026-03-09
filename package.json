@@ -31,7 +31,8 @@
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

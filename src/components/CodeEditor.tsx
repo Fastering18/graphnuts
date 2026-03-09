@@ -14,9 +14,10 @@ export interface CodeEditorHandle {
 interface Props {
     value: string;
     onChange: (val: string) => void;
+    readOnly?: boolean;
 }
 
-const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor({ value, onChange }, ref) {
+const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor({ value, onChange, readOnly = false }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const onChangeRef = useRef(onChange);
@@ -60,6 +61,8 @@ const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor({ val
                     ".cm-activeLine": { backgroundColor: "rgba(108,92,231,0.08)" },
                     ".cm-activeLineGutter": { backgroundColor: "rgba(108,92,231,0.12)" },
                 }),
+                EditorState.readOnly.of(readOnly),
+                EditorView.editable.of(!readOnly),
             ],
         });
         const view = new EditorView({ state, parent: containerRef.current });

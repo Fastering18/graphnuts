@@ -26,13 +26,18 @@ interface Props {
     onToggleExplorer: () => void;
     onToggleEditor: () => void;
     onTogglePreview: () => void;
+    onUndo: () => void;
+    onRedo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
 }
 
 export default function Toolbar({
     filename, dot, saveStatus = "saved", user, isOwner, svgRef, onFilenameChange, onDotChange, onLayout,
     mode, onModeChange, onCenterView, onShare,
     showExplorer, showEditor, showPreview,
-    onToggleExplorer, onToggleEditor, onTogglePreview
+    onToggleExplorer, onToggleEditor, onTogglePreview,
+    onUndo, onRedo, canUndo, canRedo
 }: Props) {
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -93,6 +98,8 @@ export default function Toolbar({
                     onClick={() => onModeChange("select")} title="Select mode (V)">⬚</button>
             </div>
 
+            <button className="btn btn-icon" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)">↶</button>
+            <button className="btn btn-icon" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)">↷</button>
             <button className="btn btn-icon" onClick={onCenterView} title="Center view (C)">⊙</button>
             <div className="toolbar-separator" />
 

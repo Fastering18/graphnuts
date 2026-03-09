@@ -17,8 +17,9 @@ import { useSession } from "next-auth/react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import type { CanvasHandle, CanvasMode } from "@/components/GraphCanvas";
 import type { CodeEditorHandle } from "@/components/CodeEditor";
+import type { CanvasHandle, CanvasMode } from "@/components/GraphCanvas";
+import { toast } from "sonner";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), { ssr: false });
 const GraphCanvas = dynamic(() => import("@/components/GraphCanvas"), { ssr: false });
@@ -70,6 +71,10 @@ export default function EditorPage() {
     const graphData = useQuery(api.graphs.getGraph, isConvexId ? { id: id as Id<"graphs"> } : "skip");
     const saveGraph = useMutation(api.graphs.saveGraph);
 
+    const canEdit = isConvexId
+        ? Boolean(session?.user?.id && (session.user.id === graphData?.userId || graphData?.isPublicEditable))
+        : true;
+
     const [dot, setDot] = useState(() => {
         if (typeof window !== "undefined") return sessionStorage.getItem(`gn_${id}`) || DEFAULT_DOT;
         return DEFAULT_DOT;
@@ -78,6 +83,70 @@ export default function EditorPage() {
         if (typeof window !== "undefined") return sessionStorage.getItem(`gn_name_${id}`) || "untitled.gn";
         return "untitled.gn";
     });
+
+    const [history, setHistory] = useState<string[]>(() => {
+        if (typeof window !== "undefined") return [sessionStorage.getItem(`gn_${id}`) || DEFAULT_DOT];
+        return [DEFAULT_DOT];
+    });
+    const historyIndex = useRef(0);
+
+    const updateDot = useCallback((action: string | ((prev: string) => string)) => {
+        setDot(prev => {
+            const newDot = typeof action === 'function' ? action(prev) : action;
+            if (newDot === prev) return prev;
+
+            setHistory(h => {
+                const newHistory = h.slice(0, historyIndex.current + 1);
+                newHistory.push(newDot);
+                if (newHistory.length > 50) {
+                    historyIndex.current = 49;
+                    return newHistory.slice(newHistory.length - 50);
+                }
+                historyIndex.current = newHistory.length - 1;
+                return newHistory;
+            });
+            return newDot;
+        });
+    }, []);
+
+    const handleUndo = useCallback(() => {
+        setHistory(h => {
+            if (historyIndex.current > 0) {
+                historyIndex.current -= 1;
+                setDot(h[historyIndex.current]);
+            }
+            return h;
+        });
+    }, []);
+
+    const handleRedo = useCallback(() => {
+        setHistory(h => {
+            if (historyIndex.current < h.length - 1) {
+                historyIndex.current += 1;
+                setDot(h[historyIndex.current]);
+            }
+            return h;
+        });
+    }, []);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ignore if inside an input field
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) handleRedo();
+                else handleUndo();
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                handleRedo();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [handleUndo, handleRedo]);
 
     // Manage Cloud Save Status UI
     const [saveStatus, setSaveStatus] = useState<"unsaved" | "saving" | "saved">("saved");
@@ -132,10 +201,6 @@ export default function EditorPage() {
             setSaveStatus("unsaved");
         }
 
-        const canEdit = isConvexId && session?.user?.id && (
-            session.user.id === graphData?.userId || graphData?.isPublicEditable
-        );
-
         if (canEdit && (dot !== remoteDot.current || filename !== remoteTitle.current)) {
             const timer = setTimeout(() => {
                 setSaveStatus("saving");
@@ -159,6 +224,7 @@ export default function EditorPage() {
                 }).catch(err => {
                     console.error("Save failed", err);
                     setSaveStatus("unsaved");
+                    toast.error("Failed to save to cloud");
                 });
             }, 1000);
             return () => clearTimeout(timer);
@@ -175,31 +241,36 @@ export default function EditorPage() {
     }, [edgeCtx, nodeCtx]);
 
     const handleLayout = useCallback(async (m: LayoutMode) => {
+        if (!canEdit) return;
         // Remove positions and let WASM re-layout
         const clean = removeAllPositions(dot);
-        setDot(clean);
-    }, [dot]);
+        updateDot(clean);
 
-    const handleDotChange = useCallback((newDot: string) => setDot(newDot), []);
+    }, [dot, updateDot, canEdit]);
+
+    const handleDotChange = useCallback((newDot: string) => {
+        if (canEdit) updateDot(newDot);
+    }, [updateDot, canEdit]);
 
     const handleDelete = useCallback((ids?: string[]) => {
+        if (!canEdit) return;
         const toDelete = ids || [...selection].filter((i) => !i.includes("->") && !i.startsWith("cluster"));
         if (toDelete.length > 0) {
-            setDot((prev) => deleteNodesFromDot(prev, toDelete));
+            updateDot((prev) => deleteNodesFromDot(prev, toDelete));
             setSelection(new Set());
         }
     }, [selection]);
 
     const handleRename = useCallback((oldId: string, newId: string) => {
-        setDot((prev) => renameNodeInDot(prev, oldId, newId));
-    }, []);
+        if (canEdit) updateDot((prev) => renameNodeInDot(prev, oldId, newId));
+    }, [updateDot, canEdit]);
 
     const handleSelectAll = useCallback(() => {
         // Parse node IDs from the current SVG
         const svg = canvasRef.current?.getSvg();
         if (!svg) return;
         const ids = new Set<string>();
-        svg.querySelectorAll("g.gn-node").forEach((g) => {
+        svg.querySelectorAll("g.gn-node").forEach((g: Element) => {
             const id = (g as HTMLElement).dataset.id;
             if (id) ids.add(id);
         });
@@ -216,27 +287,29 @@ export default function EditorPage() {
     }, [dot]);
 
     const handleEdgeContext = useCallback((edgeId: string, x: number, y: number) => {
+        if (!canEdit) return;
         setEdgeCtx({ id: edgeId, x, y });
         setNodeCtx(null);
-    }, []);
+    }, [canEdit]);
 
     const handleNodeShapeContext = useCallback((nodeId: string, x: number, y: number) => {
+        if (!canEdit) return;
         setNodeCtx({ id: nodeId, x, y });
         setEdgeCtx(null);
-    }, []);
+    }, [canEdit]);
 
     const handleEdgeStyle = useCallback((style: string) => {
         if (!edgeCtx) return;
         const parts = edgeCtx.id.split("->");
         if (parts.length === 2) {
-            setDot((prev) => patchEdgeStyle(prev, parts[0].trim(), parts[1].trim(), style));
+            updateDot((prev) => patchEdgeStyle(prev, parts[0].trim(), parts[1].trim(), style));
         }
         setEdgeCtx(null);
     }, [edgeCtx]);
 
     const handleNodeShape = useCallback((shape: string) => {
         if (!nodeCtx) return;
-        setDot((prev) => {
+        updateDot((prev) => {
             const lines = prev.split("\n");
 
             const nodeLineIdx = lines.findIndex(l => {
@@ -301,7 +374,7 @@ export default function EditorPage() {
         if (showEditor && showPreview) {
             return (
                 <SplitPane
-                    left={<CodeEditor ref={editorRef} value={dot} onChange={handleDotChange} />}
+                    left={<CodeEditor ref={editorRef} value={dot} onChange={handleDotChange} readOnly={!canEdit} />}
                     right={
                         <GraphCanvas
                             ref={canvasRef}
@@ -319,7 +392,7 @@ export default function EditorPage() {
                 />
             );
         }
-        if (showEditor) return <CodeEditor ref={editorRef} value={dot} onChange={handleDotChange} />;
+        if (showEditor) return <CodeEditor ref={editorRef} value={dot} onChange={handleDotChange} readOnly={!canEdit} />;
         if (showPreview) return (
             <GraphCanvas
                 ref={canvasRef}
@@ -350,7 +423,10 @@ export default function EditorPage() {
                                     value={typeof window !== "undefined" ? window.location.href : ""}
                                     style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "8px 12px", color: "#f8fafc" }}
                                 />
-                                <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(window.location.href)}>Copy</button>
+                                <button className="btn btn-secondary" onClick={() => {
+                                    navigator.clipboard.writeText(window.location.href);
+                                    toast.success("Link copied to clipboard");
+                                }}>Copy</button>
                             </div>
                         </div>
 
@@ -411,6 +487,10 @@ export default function EditorPage() {
                 onToggleExplorer={() => setShowExplorer((p) => !p)}
                 onToggleEditor={() => setShowEditor((p) => !p)}
                 onTogglePreview={() => setShowPreview((p) => !p)}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                canUndo={historyIndex.current > 0}
+                canRedo={historyIndex.current < history.length - 1}
             />
             <div className="editor-main">
                 {showExplorer ? (

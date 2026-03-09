@@ -1,0 +1,44 @@
+digraph G {
+    graph [rankdir=TD bgcolor="#0f172a" fontname="Inter, sans-serif" pad=0.5 splines=ortho]
+    node [shape=rect style="filled,rounded" fillcolor="#1e293b" color="#334155" fontname="Inter, sans-serif" fontcolor="#f8fafc" margin="0.3,0.2"]
+    edge [color="#64748b" fontname="Inter, sans-serif" fontcolor="#94a3b8" penwidth=1.5]
+
+    // Start
+    Start [pos="-417,45!" label="Start" shape=ellipse fillcolor="#059669" color="#047857"]
+    Sync [pos="-416,132!" label="Initialize Lidar, Camera, GPS, and IMU"]
+
+    // Perception
+    ProcessImg [pos="-208,237!" label="YOLOv8 Detect Obstacle"]
+    ProcessLidar [pos="-370,295!" label="Map Pointcloud & Closest Distance"]
+    ProcessOdom [pos="-569,236!" label="Get Initial Pos & Base Reference"]
+    DrawLines [pos="-138,356!" label="Split Incoming YOLO's Obstacle (Left, Center, Right)"]
+    Localization [pos="-568,392!" label="Localization"]
+    CountObstacles [pos="-568,480!" label="Count Buoys"]
+    
+    
+    End [pos="-292,693!" label="End" fillcolor="#d94f4f" fontcolor="white"]
+
+
+    Start -> Sync
+    Sync -> ProcessImg
+    Sync -> ProcessLidar
+    Sync -> ProcessOdom
+    ProcessImg -> DrawLines
+    ProcessLidar -> Localization
+    ProcessOdom -> Localization
+    
+    // --> SUGGESTED NEXT STEP: Sensor Fusion & Mapping
+    // We need a place where the 2D Image Bounding Boxes (YOLO) meet the 3D Distance Data (LiDAR). 
+    SensorFusion [pos="-370,400!" label="Sensor Fusion\n(Match BBox to Pointcloud)" shape=box]
+    LocalMap [pos="-370,480!" label="Update Local Scene Map\n(X, Y distances of Buoys)" style="filled" fillcolor="#e2e8f0"]
+
+    ProcessImg -> SensorFusion
+    ProcessLidar -> SensorFusion
+    SensorFusion -> LocalMap
+    // <-- END SUGGESTION
+    
+    Localization -> CountObstacles
+
+    // Control
+
+}
