@@ -728,7 +728,22 @@ static std::string renderNodeSvg(const Node& n) {
     return o.str();
 }
 
-static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
+static std::string getSideKey(const Node& n, const Node& other, const std::string& port) {
+    if (!port.empty() && port != "c" && port != "_") return n.id + ":" + port;
+    float dx = other.x - n.x, dy = other.y - n.y;
+    if (std::abs(dx) > std::abs(dy)) return n.id + ":" + (dx > 0 ? "e" : "w");
+    return n.id + ":" + (dy > 0 ? "s" : "n");
+}
+
+static float fanOffset(int index, int total, float maxSpan) {
+    if (total <= 1) return 0;
+    // Evenly spread: divide span into (total+1) equal parts
+    // Edge i at position (i+1)/(total+1), centered around 0.5
+    float t = (float)(index + 1) / (float)(total + 1);
+    return (t - 0.5f) * maxSpan;
+}
+
+static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx, float fromOff, float toOff) {
     auto fromIt = g.nodes.find(e.from), toIt = g.nodes.find(e.to);
     if (fromIt == g.nodes.end() || toIt == g.nodes.end()) return "";
     const Node& fn = fromIt->second;
@@ -740,6 +755,21 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
     Pt pf = borderPt(fn, tempT.x, tempT.y, e.fromPort);
     Pt pt = borderPt(tn, tempF.x, tempF.y, e.toPort);
 
+    // Apply fan-out offsets perpendicular to the side normal
+    auto applyFanOffset = [](Pt& p, const Node& n, const Node& other, const std::string& port, float off) {
+        if (std::abs(off) < 0.01f) return;
+        std::string side = port;
+        if (side.empty() || side == "c" || side == "_") {
+            float dx = other.x - n.x, dy = other.y - n.y;
+            if (std::abs(dx) > std::abs(dy)) side = dx > 0 ? "e" : "w";
+            else side = dy > 0 ? "s" : "n";
+        }
+        // Offset perpendicular to the side: for n/s sides, offset X; for e/w sides, offset Y
+        if (side == "n" || side == "s" || side == "ne" || side == "nw" || side == "se" || side == "sw") p.x += off;
+        else p.y += off;
+    };
+    // NOTE: fan offsets are applied inside each spline branch after final pf/pt are set
+
     std::string splines = "curved"; // default
     auto splinesIt = g.graphAttrs.find("splines");
     if (splinesIt != g.graphAttrs.end()) splines = splinesIt->second;
@@ -749,6 +779,8 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
     float cx = 0, cy = 0; // Focus for curved
 
     if (splines == "line" || splines == "false") {
+        applyFanOffset(pf, fn, tn, e.fromPort, fromOff);
+        applyFanOffset(pt, tn, fn, e.toPort, toOff);
         path = "M" + f2s(pf.x) + "," + f2s(pf.y) + " L" + f2s(pt.x) + "," + f2s(pt.y);
         lx = (pf.x + pt.x) / 2;
         ly = (pf.y + pt.y) / 2;
@@ -788,6 +820,10 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
         bool fromH = (n1.x != 0);
         bool toH   = (n2.x != 0);
 
+        // Apply fan offsets AFTER final pf/pt are set
+        applyFanOffset(pf, fn, tn, e.fromPort, fromOff);
+        applyFanOffset(pt, tn, fn, e.toPort, toOff);
+
         float dist = 20.0f;
         Pt p1 = {pf.x + n1.x * dist, pf.y + n1.y * dist};
         Pt p2 = {pt.x + n2.x * dist, pt.y + n2.y * dist};
@@ -814,6 +850,8 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
         ly = (pf.y + pt.y) / 2;
     } else {
         // curved / true / bezier
+        applyFanOffset(pf, fn, tn, e.fromPort, fromOff);
+        applyFanOffset(pt, tn, fn, e.toPort, toOff);
         float dx = pt.x - pf.x, dy = pt.y - pf.y;
         float len = std::sqrt(dx*dx + dy*dy);
         if (len < 0.1f) len = 1;
@@ -932,8 +970,33 @@ static std::string renderSvg(const Graph& g) {
 
     // Clusters
     for (auto& [id, cl] : g.clusters) svg << renderClusterSvg(cl);
-    // Edges
-    for (size_t i = 0; i < g.edges.size(); i++) svg << renderEdgeSvg(g, g.edges[i], (int)i);
+    // Pre-compute edge fan-out offsets
+    std::map<std::string, int> sideCount;
+    std::map<std::string, int> sideIndex;
+    for (auto& e : g.edges) {
+        auto fi = g.nodes.find(e.from), ti = g.nodes.find(e.to);
+        if (fi == g.nodes.end() || ti == g.nodes.end()) continue;
+        std::string fk = getSideKey(fi->second, ti->second, e.fromPort);
+        std::string tk = getSideKey(ti->second, fi->second, e.toPort);
+        sideCount[fk]++;
+        sideCount[tk]++;
+    }
+
+    std::map<std::string, int> sideCur;
+    for (size_t i = 0; i < g.edges.size(); i++) {
+        auto fi = g.nodes.find(g.edges[i].from), ti = g.nodes.find(g.edges[i].to);
+        if (fi == g.nodes.end() || ti == g.nodes.end()) { svg << renderEdgeSvg(g, g.edges[i], (int)i, 0, 0); continue; }
+        std::string fk = getSideKey(fi->second, ti->second, g.edges[i].fromPort);
+        std::string tk = getSideKey(ti->second, fi->second, g.edges[i].toPort);
+        int fi2 = sideCur[fk]++;
+        int ti2 = sideCur[tk]++;
+        // Max span is half the node dimension on that axis
+        float fSpan = (fk.back() == 'e' || fk.back() == 'w') ? fi->second.h * 0.7f : fi->second.w * 0.7f;
+        float tSpan = (tk.back() == 'e' || tk.back() == 'w') ? ti->second.h * 0.7f : ti->second.w * 0.7f;
+        float fOff = fanOffset(fi2, sideCount[fk], fSpan);
+        float tOff = fanOffset(ti2, sideCount[tk], tSpan);
+        svg << renderEdgeSvg(g, g.edges[i], (int)i, fOff, tOff);
+    }
     // Nodes (on top)
     for (auto& id : g.nodeOrder) {
         auto it = g.nodes.find(id);
