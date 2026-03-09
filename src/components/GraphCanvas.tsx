@@ -401,7 +401,12 @@ const GraphCanvas = forwardRef<CanvasHandle, Props>(function GraphCanvas(
                 applySelection(selRef.current);
                 requestAnimationFrame(() => { if (!cancelled) centerView(); });
             } catch (e: unknown) {
-                if (!cancelled) setError(e instanceof Error ? e.message : "Render error");
+                if (!cancelled) {
+                    const msg = e instanceof Error ? e.message : "Render error";
+                    setError(msg);
+                    const { toast } = await import("sonner");
+                    toast.error("Graph render failed", { description: msg, duration: 5000 });
+                }
             }
         };
 

@@ -600,6 +600,18 @@ static Pt rectBorder(float cx, float cy, float hw, float hh, float dx, float dy)
     return {cx + dx * s, cy + dy * s};
 }
 
+static Pt getPortNormal(const std::string& port) {
+    if (port == "n") return {0, -1};
+    if (port == "s") return {0, 1};
+    if (port == "e") return {1, 0};
+    if (port == "w") return {-1, 0};
+    if (port == "ne") return {0.7071f, -0.7071f};
+    if (port == "se") return {0.7071f, 0.7071f};
+    if (port == "nw") return {-0.7071f, -0.7071f};
+    if (port == "sw") return {-0.7071f, 0.7071f};
+    return {0, 0};
+}
+
 static Pt ellipseBorder(float cx, float cy, float rx, float ry, float dx, float dy) {
     float a = std::atan2(dy * rx, dx * ry);
     return {cx + rx * std::cos(a), cy + ry * std::sin(a)};
@@ -741,37 +753,97 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx) {
         lx = (pf.x + pt.x) / 2;
         ly = (pf.y + pt.y) / 2;
     } else if (splines == "ortho") {
-        std::string rankdir = "TB";
-        auto rdIt = g.graphAttrs.find("rankdir");
-        if (rdIt != g.graphAttrs.end()) rankdir = rdIt->second;
+        bool hasFromPort = !e.fromPort.empty() && e.fromPort != "c" && e.fromPort != "_";
+        bool hasToPort = !e.toPort.empty() && e.toPort != "c" && e.toPort != "_";
 
-        if (rankdir == "LR" || rankdir == "RL") {
-            float midX = (pf.x + pt.x) / 2;
-            path = "M" + f2s(pf.x) + "," + f2s(pf.y) 
-                 + " L" + f2s(midX) + "," + f2s(pf.y)
-                 + " L" + f2s(midX) + "," + f2s(pt.y)
-                 + " L" + f2s(pt.x) + "," + f2s(pt.y);
-        } else {
-            float midY = (pf.y + pt.y) / 2;
-            path = "M" + f2s(pf.x) + "," + f2s(pf.y) 
-                 + " L" + f2s(pf.x) + "," + f2s(midY)
-                 + " L" + f2s(pt.x) + "," + f2s(midY)
-                 + " L" + f2s(pt.x) + "," + f2s(pt.y);
+        // Auto-detect best cardinal sides when no ports specified
+        if (!hasFromPort || !hasToPort) {
+            float dx = tn.x - fn.x;
+            float dy = tn.y - fn.y;
+            bool horizontal = std::abs(dx) > std::abs(dy);
+
+            if (!hasFromPort) {
+                std::string autoPort;
+                if (horizontal) autoPort = dx > 0 ? "e" : "w";
+                else            autoPort = dy > 0 ? "s" : "n";
+                pf = getPortPt(fn, autoPort);
+                hasFromPort = true;
+            }
+            if (!hasToPort) {
+                std::string autoPort;
+                if (horizontal) autoPort = dx > 0 ? "w" : "e";
+                else            autoPort = dy > 0 ? "n" : "s";
+                pt = getPortPt(tn, autoPort);
+                hasToPort = true;
+            }
         }
+
+        Pt n1 = getPortNormal(e.fromPort.empty() || e.fromPort == "c" || e.fromPort == "_"
+            ? (std::abs(tn.x - fn.x) > std::abs(tn.y - fn.y) ? (tn.x > fn.x ? "e" : "w") : (tn.y > fn.y ? "s" : "n"))
+            : e.fromPort);
+        Pt n2 = getPortNormal(e.toPort.empty() || e.toPort == "c" || e.toPort == "_"
+            ? (std::abs(tn.x - fn.x) > std::abs(tn.y - fn.y) ? (tn.x > fn.x ? "w" : "e") : (tn.y > fn.y ? "n" : "s"))
+            : e.toPort);
+
+        bool fromH = (n1.x != 0);
+        bool toH   = (n2.x != 0);
+
+        float dist = 20.0f;
+        Pt p1 = {pf.x + n1.x * dist, pf.y + n1.y * dist};
+        Pt p2 = {pt.x + n2.x * dist, pt.y + n2.y * dist};
+
+        path = "M" + f2s(pf.x) + "," + f2s(pf.y) + " L" + f2s(p1.x) + "," + f2s(p1.y);
+
+        if (fromH && toH) {
+            float midX = (p1.x + p2.x) / 2;
+            path += " L" + f2s(midX) + "," + f2s(p1.y)
+                  + " L" + f2s(midX) + "," + f2s(p2.y);
+        } else if (!fromH && !toH) {
+            float midY = (p1.y + p2.y) / 2;
+            path += " L" + f2s(p1.x) + "," + f2s(midY)
+                  + " L" + f2s(p2.x) + "," + f2s(midY);
+        } else if (fromH && !toH) {
+            path += " L" + f2s(p2.x) + "," + f2s(p1.y);
+        } else {
+            path += " L" + f2s(p1.x) + "," + f2s(p2.y);
+        }
+
+        path += " L" + f2s(p2.x) + "," + f2s(p2.y) + " L" + f2s(pt.x) + "," + f2s(pt.y);
+
         lx = (pf.x + pt.x) / 2;
         ly = (pf.y + pt.y) / 2;
     } else {
         // curved / true / bezier
-        float mx = (pf.x + pt.x) / 2, my = (pf.y + pt.y) / 2;
         float dx = pt.x - pf.x, dy = pt.y - pf.y;
         float len = std::sqrt(dx*dx + dy*dy);
         if (len < 0.1f) len = 1;
-        float off = std::min(len * 0.1f, 15.0f);
-        float nx = -dy / len * off, ny = dx / len * off;
-        cx = mx + nx; cy = my + ny;
-        path = "M" + f2s(pf.x) + "," + f2s(pf.y) + " Q" + f2s(cx) + "," + f2s(cy) + " " + f2s(pt.x) + "," + f2s(pt.y);
-        lx = (pf.x + 2*cx + pt.x) / 4;
-        ly = (pf.y + 2*cy + pt.y) / 4;
+        
+        bool hasFromPort = !e.fromPort.empty() && e.fromPort != "c" && e.fromPort != "_";
+        bool hasToPort = !e.toPort.empty() && e.toPort != "c" && e.toPort != "_";
+
+        if (hasFromPort || hasToPort) {
+            Pt n1 = hasFromPort ? getPortNormal(e.fromPort) : Pt{dx/len, dy/len}; 
+            Pt n2 = hasToPort ? getPortNormal(e.toPort) : Pt{-dx/len, -dy/len}; // Normal points OUTWARD from node
+            
+            float dist = len * 0.4f; // Control point extension strength
+            
+            Pt c1 = {pf.x + n1.x * dist, pf.y + n1.y * dist};
+            Pt c2 = {pt.x + n2.x * dist, pt.y + n2.y * dist};
+            
+            path = "M" + f2s(pf.x) + "," + f2s(pf.y) + " C" + f2s(c1.x) + "," + f2s(c1.y) + " " + f2s(c2.x) + "," + f2s(c2.y) + " " + f2s(pt.x) + "," + f2s(pt.y);
+            
+            // Label pos roughly halfway along bezier
+            lx = (pf.x + 3*c1.x + 3*c2.x + pt.x)/8;
+            ly = (pf.y + 3*c1.y + 3*c2.y + pt.y)/8;
+        } else {
+            float mx = (pf.x + pt.x) / 2, my = (pf.y + pt.y) / 2;
+            float off = std::min(len * 0.1f, 15.0f);
+            float nx = -dy / len * off, ny = dx / len * off;
+            cx = mx + nx; cy = my + ny;
+            path = "M" + f2s(pf.x) + "," + f2s(pf.y) + " Q" + f2s(cx) + "," + f2s(cy) + " " + f2s(pt.x) + "," + f2s(pt.y);
+            lx = (pf.x + 2*cx + pt.x) / 4;
+            ly = (pf.y + 2*cy + pt.y) / 4;
+        }
     }
 
     std::ostringstream o;
