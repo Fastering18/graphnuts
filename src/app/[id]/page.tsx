@@ -71,8 +71,13 @@ export default function EditorPage() {
     const graphData = useQuery(api.graphs.getGraph, isConvexId ? { id: id as Id<"graphs"> } : "skip");
     const saveGraph = useMutation(api.graphs.saveGraph);
 
+    // Explicitly compute permissions that properly handles Guest + Loading states
     const canEdit = isConvexId
-        ? Boolean(session?.user?.id && (session.user.id === graphData?.userId || graphData?.isPublicEditable))
+        ? (graphData === undefined ? true // optimistic during load
+            : graphData === null ? false // invalid graph
+                : (!graphData.userId || graphData.isPublicEditable
+                    ? true
+                    : Boolean(session?.user?.id && session.user.id === graphData.userId)))
         : true;
 
     const [dot, setDot] = useState(() => {
@@ -374,7 +379,7 @@ export default function EditorPage() {
         if (showEditor && showPreview) {
             return (
                 <SplitPane
-                    left={<CodeEditor ref={editorRef} value={dot} onChange={handleDotChange} readOnly={!canEdit} />}
+                    left={<CodeEditor key={`editor-${canEdit}`} ref={editorRef} value={dot} onChange={handleDotChange} readOnly={!canEdit} />}
                     right={
                         <GraphCanvas
                             ref={canvasRef}
@@ -392,7 +397,7 @@ export default function EditorPage() {
                 />
             );
         }
-        if (showEditor) return <CodeEditor ref={editorRef} value={dot} onChange={handleDotChange} readOnly={!canEdit} />;
+        if (showEditor) return <CodeEditor key={`editor-${canEdit}`} ref={editorRef} value={dot} onChange={handleDotChange} readOnly={!canEdit} />;
         if (showPreview) return (
             <GraphCanvas
                 ref={canvasRef}
@@ -430,7 +435,7 @@ export default function EditorPage() {
                             </div>
                         </div>
 
-                        {session?.user?.id === graphData?.userId && isConvexId ? (
+                        {Boolean(session?.user?.id && session.user.id === graphData?.userId) && isConvexId ? (
                             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
                                     <input
@@ -472,7 +477,7 @@ export default function EditorPage() {
                 dot={dot}
                 saveStatus={saveStatus}
                 user={session?.user}
-                isOwner={session?.user?.id === graphData?.userId}
+                isOwner={Boolean(session?.user?.id && session.user.id === graphData?.userId)}
                 svgRef={{ current: canvasRef.current?.getSvg() ?? null } as React.RefObject<SVGSVGElement | null>}
                 onFilenameChange={setFilename}
                 onDotChange={(newDot) => setDot(newDot)}
