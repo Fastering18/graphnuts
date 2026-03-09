@@ -921,7 +921,9 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx, float f
             }
         }
 
-        o << "<rect x=\"" << f2s(fLx - 20) << "\" y=\"" << f2s(fLy - 8) << "\" width=\"40\" height=\"16\" fill=\"var(--bg-primary,#0a0a0f)\" rx=\"3\" style=\"pointer-events:none\"/>";
+        float labelWidth = e.label.length() * e.style.fontSize * 0.6f + 8.0f;
+        float labelHeight = e.style.fontSize + 4.0f;
+        o << "<rect x=\"" << f2s(fLx - labelWidth/2) << "\" y=\"" << f2s(fLy - labelHeight/2) << "\" width=\"" << f2s(labelWidth) << "\" height=\"" << f2s(labelHeight) << "\" fill=\"var(--bg-primary,#0a0a0f)\" rx=\"3\" style=\"pointer-events:none\"/>";
         o << "<text text-anchor=\"middle\" dominant-baseline=\"central\" x=\"" << f2s(fLx) << "\" y=\"" << f2s(fLy) << "\" fill=\"" << esc(e.style.fontColor) << "\" font-family=\"" << esc(e.style.fontFamily) << "\" font-size=\"" << f2s(e.style.fontSize) << "\" style=\"pointer-events:none\">" << esc(e.label) << "</text>";
     }
     o << "</g>\n";
