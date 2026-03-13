@@ -34,7 +34,16 @@ function tokenize(src: string): Token[] {
             let s = "";
             i++;
             while (i < n && src[i] !== '"') {
-                if (src[i] === "\\" && i + 1 < n) { s += src[i + 1]; i += 2; }
+                if (src[i] === "\\" && i + 1 < n) {
+                    const esc = src[i + 1];
+                    if (esc === "n") s += "\n";
+                    else if (esc === "r") s += "\r";
+                    else if (esc === "t") s += "\t";
+                    else if (esc === "\\") s += "\\";
+                    else if (esc === '"') s += '"';
+                    else s += esc; // Fallback for other escapes like \l or just unexpected ones
+                    i += 2;
+                }
                 else { s += src[i]; i++; }
             }
             i++;
@@ -162,7 +171,7 @@ class Parser {
                 const c = this.graph.clusters.get(clusterId);
                 if (c) {
                     c.attrs[key] = val;
-                    if (key === "label") c.label = val.replace(/<[^>]+>/g, "").trim() || c.label;
+                    if (key === "label") c.label = this.extractLabel(c.attrs, c.label);
                 }
             } else {
                 this.graph.attrs[key] = val;
@@ -188,7 +197,7 @@ class Parser {
                     this.ensureNode(ids[i + 1], {}, clusterId);
                     const edge: GnEdge = {
                         from: ids[i], to: ids[i + 1],
-                        label: (attrs.label || "").trim(),
+                        label: this.extractLabel(attrs, ""),
                         style: parseEdgeStyle(attrs, this.edgeDefaultStyle()),
                         attrs,
                     };
@@ -231,8 +240,13 @@ class Parser {
 
     extractLabel(attrs: Record<string, string>, fallback: string): string {
         const raw = attrs.label;
-        if (!raw) return fallback;
-        return raw.replace(/<[^>]+>/g, "").replace(/\\n/g, "\n").replace(/&amp;/g, "&").trim() || fallback;
+        if (raw === undefined || raw === null) return fallback;
+        // If it starts with < and ends with >, it's an HTML label - strip tags
+        if (raw.trim().startsWith("<") && raw.trim().endsWith(">")) {
+            return raw.replace(/<[^>]+>/g, "").trim() || fallback;
+        }
+        // Otherwise it's a plain string label, we already handled escapes in tokenizer
+        return raw || fallback;
     }
 
     edgeDefaultStyle(): Partial<import("./types").GnEdgeStyle> {
