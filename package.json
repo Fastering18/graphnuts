@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build-wasm": "./wasm/build.sh",
     "start": "next start",
     "lint": "eslint"
   },

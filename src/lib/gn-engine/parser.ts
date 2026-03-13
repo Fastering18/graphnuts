@@ -222,6 +222,7 @@ class Parser {
                 cluster: clusterId || undefined,
                 attrs: merged,
             };
+            this.applyPosition(node);
             this.graph.nodes.set(id, node);
         } else {
             if (Object.keys(attrs).length > 0) {
@@ -229,12 +230,26 @@ class Parser {
                 node.label = this.extractLabel(node.attrs, id);
                 node.shape = (node.attrs.shape || node.shape) as GnShape;
                 node.style = parseStyle(node.attrs);
+                this.applyPosition(node);
             }
             if (clusterId && !node.cluster) node.cluster = clusterId;
         }
         if (clusterId) {
             const c = this.graph.clusters.get(clusterId);
             if (c && !c.children.includes(id)) c.children.push(id);
+        }
+    }
+
+    applyPosition(node: GnNode) {
+        let p = node.attrs.pos || node.attrs.position;
+        if (p) {
+            p = p.replace(/"/g, "");
+            if (p.endsWith("!")) p = p.slice(0, -1);
+            const coords = p.split(",");
+            if (coords.length === 2) {
+                node.x = parseFloat(coords[0]);
+                node.y = parseFloat(coords[1]);
+            }
         }
     }
 

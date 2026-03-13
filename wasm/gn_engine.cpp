@@ -108,7 +108,16 @@ static std::vector<Token> tokenize(const std::string& src) {
         if (src[i] == '"') {
             std::string s; i++;
             while (i < n && src[i] != '"') {
-                if (src[i] == '\\' && i + 1 < n) { s += src[i+1]; i += 2; }
+                if (src[i] == '\\' && i + 1 < n) {
+                    char esc = src[i+1];
+                    if (esc == 'n') s += '\n';
+                    else if (esc == 'r') s += '\r';
+                    else if (esc == 't') s += '\t';
+                    else if (esc == '\\') s += '\\';
+                    else if (esc == '"') s += '"';
+                    else s += esc;
+                    i += 2;
+                }
                 else { s += src[i]; i++; }
             }
             i++;
@@ -163,13 +172,21 @@ class Parser {
     }
 
     std::string stripHtml(const std::string& s) {
-        std::string r;
-        bool inTag = false;
-        for (char c : s) {
-            if (c == '<') inTag = true;
-            else if (c == '>') inTag = false;
-            else if (!inTag) r += c;
+        std::string trimmed = s;
+        trimmed.erase(0, trimmed.find_first_not_of(" \t\n\r"));
+        trimmed.erase(trimmed.find_last_not_of(" \t\n\r") + 1);
+
+        std::string r = s;
+        if (trimmed.size() >= 2 && trimmed.front() == '<' && trimmed.back() == '>') {
+            r = "";
+            bool inTag = false;
+            for (char c : s) {
+                if (c == '<') inTag = true;
+                else if (c == '>') inTag = false;
+                else if (!inTag) r += c;
+            }
         }
+
         // Replace &amp; etc
         std::string out;
         for (size_t i = 0; i < r.size(); i++) {
@@ -178,6 +195,7 @@ class Parser {
             else if (r.substr(i, 4) == "&gt;") { out += '>'; i += 3; }
             else out += r[i];
         }
+
         // Trim
         size_t s1 = out.find_first_not_of(" \t\n\r");
         size_t s2 = out.find_last_not_of(" \t\n\r");
