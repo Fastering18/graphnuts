@@ -104,6 +104,11 @@ class Parser {
         this.expect("{");
         this.parseBody(null);
         this.match("}");
+
+        if (this.graph.attrs.bgcolor) {
+            this.graph.bgcolor = this.graph.attrs.bgcolor;
+        }
+
         return this.graph;
     }
 

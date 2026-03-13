@@ -89,69 +89,102 @@ export default function EditorPage() {
         return "untitled.gn";
     });
 
-    const [history, setHistory] = useState<string[]>(() => {
-        if (typeof window !== "undefined") return [sessionStorage.getItem(`gn_${id}`) || DEFAULT_DOT];
-        return [DEFAULT_DOT];
-    });
-    const historyIndex = useRef(0);
+    // ── Undo / Redo system ───────────────────────────────────────
+    const historyRef = useRef<string[]>([]);
+    const historyIndexRef = useRef(-1);
+    const isUndoRedoRef = useRef(false);
+    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [historyMeta, setHistoryMeta] = useState({ canUndo: false, canRedo: false });
+
+    // Seed history on mount
+    useEffect(() => {
+        const initial = (typeof window !== "undefined" ? sessionStorage.getItem(`gn_${id}`) : null) || DEFAULT_DOT;
+        historyRef.current = [initial];
+        historyIndexRef.current = 0;
+        setHistoryMeta({ canUndo: false, canRedo: false });
+    }, [id]);
+
+    // Push a snapshot into the history stack (called on change, debounced)
+    const pushHistory = useCallback((snapshot: string) => {
+        const h = historyRef.current;
+        const idx = historyIndexRef.current;
+        // Don't push if it's the same as the current entry
+        if (h[idx] === snapshot) return;
+        // Truncate any redo entries
+        const newHistory = h.slice(0, idx + 1);
+        newHistory.push(snapshot);
+        // Cap at 50 entries
+        if (newHistory.length > 50) {
+            newHistory.shift();
+        }
+        historyRef.current = newHistory;
+        historyIndexRef.current = newHistory.length - 1;
+        setHistoryMeta({ canUndo: historyIndexRef.current > 0, canRedo: false });
+    }, []);
 
     const updateDot = useCallback((action: string | ((prev: string) => string)) => {
         setDot(prev => {
             const newDot = typeof action === 'function' ? action(prev) : action;
             if (newDot === prev) return prev;
 
-            setHistory(h => {
-                const newHistory = h.slice(0, historyIndex.current + 1);
-                newHistory.push(newDot);
-                if (newHistory.length > 50) {
-                    historyIndex.current = 49;
-                    return newHistory.slice(newHistory.length - 50);
-                }
-                historyIndex.current = newHistory.length - 1;
-                return newHistory;
-            });
+            // If this change is from undo/redo, don't push history
+            if (isUndoRedoRef.current) return newDot;
+
+            // Debounce: only push a history snapshot after 500ms of inactivity
+            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = setTimeout(() => {
+                pushHistory(newDot);
+            }, 500);
+
             return newDot;
         });
-    }, []);
+    }, [pushHistory]);
 
     const handleUndo = useCallback(() => {
-        setHistory(h => {
-            if (historyIndex.current > 0) {
-                historyIndex.current -= 1;
-                setDot(h[historyIndex.current]);
+        const h = historyRef.current;
+        const idx = historyIndexRef.current;
+
+        // If the user has been typing and hasn't committed yet, commit current state first
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+        }
+        // Grab the current live dot to snapshot before undoing
+        setDot(currentDot => {
+            const hNow = historyRef.current;
+            const idxNow = historyIndexRef.current;
+            // If current text differs from the latest history entry, push it first
+            if (hNow[idxNow] !== currentDot) {
+                pushHistory(currentDot);
             }
-            return h;
+            // Now undo
+            const h2 = historyRef.current;
+            const idx2 = historyIndexRef.current;
+            if (idx2 > 0) {
+                historyIndexRef.current = idx2 - 1;
+                isUndoRedoRef.current = true;
+                const target = h2[idx2 - 1];
+                setHistoryMeta({ canUndo: idx2 - 1 > 0, canRedo: true });
+                // Use setTimeout to reset the flag after React commits
+                setTimeout(() => { isUndoRedoRef.current = false; }, 0);
+                return target;
+            }
+            return currentDot;
         });
-    }, []);
+    }, [pushHistory]);
 
     const handleRedo = useCallback(() => {
-        setHistory(h => {
-            if (historyIndex.current < h.length - 1) {
-                historyIndex.current += 1;
-                setDot(h[historyIndex.current]);
-            }
-            return h;
-        });
+        const h = historyRef.current;
+        const idx = historyIndexRef.current;
+        if (idx < h.length - 1) {
+            historyIndexRef.current = idx + 1;
+            isUndoRedoRef.current = true;
+            setHistoryMeta({ canUndo: true, canRedo: idx + 1 < h.length - 1 });
+            setDot(h[idx + 1]);
+            setTimeout(() => { isUndoRedoRef.current = false; }, 0);
+        }
     }, []);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Ignore if inside an input field
-            const target = e.target as HTMLElement;
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-                e.preventDefault();
-                if (e.shiftKey) handleRedo();
-                else handleUndo();
-            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-                e.preventDefault();
-                handleRedo();
-            }
-        };
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [handleUndo, handleRedo]);
 
     // Manage Cloud Save Status UI
     const [saveStatus, setSaveStatus] = useState<"unsaved" | "saving" | "saved">("saved");
@@ -353,7 +386,26 @@ export default function EditorPage() {
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            const inEditor = (e.target as HTMLElement).closest(".cm-editor");
+            const target = e.target as HTMLElement;
+            const inEditor = !!target.closest(".cm-editor");
+            const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+
+            // Undo / Redo
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+                if (inInput && !inEditor) return; // browser undo in text inputs
+                e.preventDefault();
+                if (e.shiftKey) handleRedo();
+                else handleUndo();
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+                if (inInput && !inEditor) return;
+                e.preventDefault();
+                handleRedo();
+                return;
+            }
+
+            // Other shortcuts
             if (e.key === "?" && !inEditor) { e.preventDefault(); setShowHelp((p) => !p); return; }
             if (e.key === "Escape") {
                 if (edgeCtx || nodeCtx) { setEdgeCtx(null); setNodeCtx(null); return; }
@@ -361,19 +413,21 @@ export default function EditorPage() {
                 setSelection(new Set());
                 return;
             }
-            const activeTag = document.activeElement?.tagName.toLowerCase();
-            const inInput = activeTag === "input" || activeTag === "textarea";
+
             if ((e.key === "Delete" || e.key === "Backspace") && !inEditor && !inInput) { e.preventDefault(); handleDelete(); return; }
             if (e.key === "a" && (e.ctrlKey || e.metaKey) && !inEditor && !inInput) { e.preventDefault(); handleSelectAll(); return; }
             if (e.key === "s" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); downloadText(dot, filename); return; }
             if (e.key === "e" && (e.ctrlKey || e.metaKey) && !inEditor) { e.preventDefault(); setShowExplorer((p) => !p); return; }
-            if (e.key === "h" && !inEditor && !(e.ctrlKey || e.metaKey)) { setMode("pan"); return; }
-            if (e.key === "v" && !inEditor && !(e.ctrlKey || e.metaKey)) { setMode("select"); return; }
-            if (e.key === "c" && !inEditor && !(e.ctrlKey || e.metaKey)) { handleCenterView(); return; }
+
+            if (inEditor || inInput) return;
+
+            if (e.key === "h") { setMode("pan"); return; }
+            if (e.key === "v") { setMode("select"); return; }
+            if (e.key === "c") { handleCenterView(); return; }
         };
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [showHelp, edgeCtx, handleDelete, handleSelectAll, dot, filename, handleCenterView]);
+    }, [showHelp, edgeCtx, handleDelete, handleSelectAll, dot, filename, handleCenterView, handleUndo, handleRedo]);
 
     const renderEditorAndPreview = () => {
         if (showEditor && showPreview) {
@@ -494,8 +548,8 @@ export default function EditorPage() {
                 onTogglePreview={() => setShowPreview((p) => !p)}
                 onUndo={handleUndo}
                 onRedo={handleRedo}
-                canUndo={historyIndex.current > 0}
-                canRedo={historyIndex.current < history.length - 1}
+                canUndo={historyMeta.canUndo}
+                canRedo={historyMeta.canRedo}
             />
             <div className="editor-main">
                 {showExplorer ? (

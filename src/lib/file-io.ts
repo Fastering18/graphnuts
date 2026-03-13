@@ -102,8 +102,13 @@ async function svgToCanvas(svgEl: SVGSVGElement): Promise<HTMLCanvasElement> {
             canvas.height = h * 2;
             const ctx = canvas.getContext("2d")!;
             ctx.scale(2, 2);
-            ctx.fillStyle = "#0a0a0f"; // Background color
-            ctx.fillRect(0, 0, w, h);
+
+            const bgcolor = svgEl.getAttribute("data-bgcolor") || "transparent";
+            if (bgcolor !== "transparent") {
+                ctx.fillStyle = bgcolor;
+                ctx.fillRect(0, 0, w, h);
+            }
+
             ctx.drawImage(img, 0, 0, w, h);
             URL.revokeObjectURL(url);
             resolve(canvas);

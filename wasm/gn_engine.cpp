@@ -63,6 +63,7 @@ struct Graph {
     std::vector<Edge> edges;
     std::unordered_map<std::string, Cluster> clusters;
     std::map<std::string, std::string> graphAttrs;
+    std::string bgcolor = "transparent";
     std::map<std::string, std::string> nodeDefaults;
     std::map<std::string, std::string> edgeDefaults;
 };
@@ -426,6 +427,9 @@ public:
         if (peek().type == T_LBRACE) next();
         parseBody("");
         match(T_RBRACE);
+        
+        auto it = g.graphAttrs.find("bgcolor");
+        if (it != g.graphAttrs.end()) g.bgcolor = it->second;
     }
 };
 
@@ -909,16 +913,12 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx, float f
 
     o << "<g class=\"gn-edge\" data-from=\"" << esc(e.from) << "\" data-to=\"" << esc(e.to) << "\">";
 
-    if (!e.style.invis) {
-        // Marker
-        o << "<defs><marker id=\"" << arrowId << "\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0,1 L10,5 L0,9 Z\" fill=\"" << esc(e.style.stroke) << "\"/></marker></defs>";
-        o << "<path d=\"" << path << "\" fill=\"none\" stroke=\"" << esc(e.style.stroke) << "\" stroke-width=\"" << f2s(sw) << "\"" << dashAttr << " marker-end=\"url(#" << arrowId << ")\"/>";
-    }
+    bool hasLabel = !e.label.empty();
+    float fLx = lx, fLy = ly;
+    float labelWidth = 0, labelHeight = 0;
+    std::string maskId = "m" + std::to_string(idx);
 
-    // Hit area
-    o << "<path d=\"" << path << "\" fill=\"none\" stroke=\"transparent\" stroke-width=\"14\" style=\"cursor:pointer\"/>";
-
-    if (!e.label.empty()) {
+    if (hasLabel) {
         std::string relpos = "center";
         auto rpIt = e.attrs.find("relpos");
         if (rpIt != e.attrs.end()) {
@@ -926,7 +926,6 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx, float f
             if (!relpos.empty() && relpos.front() == '"') relpos = relpos.substr(1, relpos.length() - 2);
         }
 
-        float fLx = lx, fLy = ly;
         if (relpos == "side") {
             float dx = pt.x - pf.x, dy = pt.y - pf.y;
             float len = std::sqrt(dx*dx + dy*dy);
@@ -939,9 +938,28 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx, float f
             }
         }
 
-        float labelWidth = e.label.length() * e.style.fontSize * 0.6f + 8.0f;
-        float labelHeight = e.style.fontSize + 4.0f;
-        o << "<rect x=\"" << f2s(fLx - labelWidth/2) << "\" y=\"" << f2s(fLy - labelHeight/2) << "\" width=\"" << f2s(labelWidth) << "\" height=\"" << f2s(labelHeight) << "\" fill=\"var(--bg-primary,#0a0a0f)\" rx=\"3\" style=\"pointer-events:none\"/>";
+        labelWidth = e.label.length() * e.style.fontSize * 0.6f + 8.0f;
+        labelHeight = e.style.fontSize + 4.0f;
+        
+        o << "<defs><mask id=\"" << maskId << "\" maskUnits=\"userSpaceOnUse\">"
+          << "<rect x=\"-100000\" y=\"-100000\" width=\"200000\" height=\"200000\" fill=\"white\"/>"
+          << "<rect x=\"" << f2s(fLx - labelWidth/2) << "\" y=\"" << f2s(fLy - labelHeight/2) 
+          << "\" width=\"" << f2s(labelWidth) << "\" height=\"" << f2s(labelHeight) 
+          << "\" fill=\"black\" rx=\"2\"/></mask></defs>";
+    }
+
+    if (!e.style.invis) {
+        // Marker
+        o << "<defs><marker id=\"" << arrowId << "\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0,1 L10,5 L0,9 Z\" fill=\"" << esc(e.style.stroke) << "\"/></marker></defs>";
+        o << "<path d=\"" << path << "\" fill=\"none\" stroke=\"" << esc(e.style.stroke) << "\" stroke-width=\"" << f2s(sw) << "\"" << dashAttr << " marker-end=\"url(#" << arrowId << ")\"";
+        if (hasLabel) o << " mask=\"url(#" << maskId << ")\"";
+        o << "/>";
+    }
+
+    // Hit area (invisible, but captures pointer events reliably)
+    o << "<path d=\"" << path << "\" fill=\"none\" stroke=\"transparent\" stroke-width=\"14\" style=\"cursor:pointer\"/>";
+
+    if (hasLabel) {
         o << "<text text-anchor=\"middle\" dominant-baseline=\"central\" x=\"" << f2s(fLx) << "\" y=\"" << f2s(fLy) << "\" fill=\"" << esc(e.style.fontColor) << "\" font-family=\"" << esc(e.style.fontFamily) << "\" font-size=\"" << f2s(e.style.fontSize) << "\" style=\"pointer-events:none\">" << esc(e.label) << "</text>";
     }
     o << "</g>\n";
@@ -981,7 +999,7 @@ static std::string renderSvg(const Graph& g) {
     std::ostringstream svg;
     svg << "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\" viewBox=\""
         << f2s(minX - pad) << " " << f2s(minY - pad) << " " << f2s(maxX - minX + pad*2) << " " << f2s(maxY - minY + pad*2)
-        << "\" style=\"overflow:visible;background:transparent\">";
+        << "\" style=\"overflow:visible;background:" << esc(g.bgcolor) << "\">";
 
     // Glow filter
     svg << "<defs><filter id=\"glow\"><feGaussianBlur stdDeviation=\"3\" result=\"b\"/><feFlood flood-color=\"#6c5ce7\" flood-opacity=\"0.5\" result=\"c\"/><feComposite in=\"c\" in2=\"b\" operator=\"in\" result=\"s\"/><feMerge><feMergeNode in=\"s\"/><feMergeNode in=\"SourceGraphic\"/></feMerge></filter></defs>";

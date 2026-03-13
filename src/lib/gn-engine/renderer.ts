@@ -11,7 +11,8 @@ export function renderGraph(container: HTMLElement, graph: GnGraph): SVGSVGEleme
     svg.setAttribute("width", "100%");
     svg.setAttribute("height", "100%");
     svg.style.overflow = "visible";
-    svg.style.background = "transparent";
+    svg.style.background = graph.bgcolor || "transparent";
+    svg.setAttribute("data-bgcolor", graph.bgcolor || "transparent");
 
     const defs = document.createElementNS(NS, "defs");
     addArrowDef(defs, "arrow-normal", "#333");
@@ -29,7 +30,7 @@ export function renderGraph(container: HTMLElement, graph: GnGraph): SVGSVGEleme
     graph.edges.forEach((edge, i) => {
         const fromNode = graph.nodes.get(edge.from);
         const toNode = graph.nodes.get(edge.to);
-        if (fromNode && toNode) renderEdge(root, defs, edge, fromNode, toNode, i);
+        if (fromNode && toNode) renderEdge(root, defs, edge, fromNode, toNode, i, graph.bgcolor);
     });
 
     // Render nodes
@@ -50,7 +51,7 @@ export function updateEdges(svg: SVGSVGElement, graph: GnGraph) {
     graph.edges.forEach((edge, i) => {
         const fromNode = graph.nodes.get(edge.from);
         const toNode = graph.nodes.get(edge.to);
-        if (fromNode && toNode) renderEdge(root, defs, edge, fromNode, toNode, i);
+        if (fromNode && toNode) renderEdge(root, defs, edge, fromNode, toNode, i, graph.bgcolor);
     });
 
     // Re-append nodes on top of edges
@@ -234,8 +235,9 @@ function createShape(node: GnNode): SVGElement {
     return el;
 }
 
-function renderEdge(parent: Element, defs: Element, edge: GnEdge, from: GnNode, to: GnNode, idx: number) {
+function renderEdge(parent: Element, defs: Element, edge: GnEdge, from: GnNode, to: GnNode, idx: number, bgcolor?: string) {
     const arrowId = `arrow-${idx}`;
+    const maskId = `mask-edge-${idx}`;
     const color = edge.style.stroke;
     addArrowDef(defs, arrowId, color);
 
@@ -254,6 +256,40 @@ function renderEdge(parent: Element, defs: Element, edge: GnEdge, from: GnNode, 
     if (edge.style.dashed) pathEl.setAttribute("stroke-dasharray", "8,4");
     if (edge.style.dotted) pathEl.setAttribute("stroke-dasharray", "2,4");
     pathEl.setAttribute("marker-end", `url(#${arrowId})`);
+
+    // Create mask and label text if it has a label
+    if (edge.label) {
+        const fs = edge.style.fontSize;
+        const bw = edge.label.length * fs * 0.6 + 8;
+        const bh = fs + 4;
+        const lx = labelPos.x;
+        const ly = labelPos.y;
+
+        const mask = document.createElementNS(NS, "mask");
+        mask.setAttribute("id", maskId);
+        mask.setAttribute("maskUnits", "userSpaceOnUse");
+
+        const mWhite = document.createElementNS(NS, "rect");
+        mWhite.setAttribute("x", "-100000");
+        mWhite.setAttribute("y", "-100000");
+        mWhite.setAttribute("width", "200000");
+        mWhite.setAttribute("height", "200000");
+        mWhite.setAttribute("fill", "white");
+        mask.appendChild(mWhite);
+
+        const mBlack = document.createElementNS(NS, "rect");
+        mBlack.setAttribute("x", String(lx - bw / 2));
+        mBlack.setAttribute("y", String(ly - bh / 2));
+        mBlack.setAttribute("width", String(bw));
+        mBlack.setAttribute("height", String(bh));
+        mBlack.setAttribute("fill", "black");
+        mBlack.setAttribute("rx", "2");
+        mask.appendChild(mBlack);
+
+        defs.appendChild(mask);
+        pathEl.setAttribute("mask", `url(#${maskId})`);
+    }
+
     g.appendChild(pathEl);
 
     // Hit-area (wider invisible path for click targeting)
@@ -266,7 +302,6 @@ function renderEdge(parent: Element, defs: Element, edge: GnEdge, from: GnNode, 
     g.appendChild(hitPath);
 
     if (edge.label) {
-        const bg = document.createElementNS(NS, "rect");
         const textEl = document.createElementNS(NS, "text");
         textEl.setAttribute("text-anchor", "middle");
         textEl.setAttribute("dominant-baseline", "central");
@@ -277,16 +312,6 @@ function renderEdge(parent: Element, defs: Element, edge: GnEdge, from: GnNode, 
         textEl.setAttribute("font-size", String(edge.style.fontSize));
         textEl.textContent = edge.label;
         textEl.style.pointerEvents = "none";
-
-        bg.setAttribute("x", String(labelPos.x - 20));
-        bg.setAttribute("y", String(labelPos.y - 8));
-        bg.setAttribute("width", "40");
-        bg.setAttribute("height", "16");
-        bg.setAttribute("fill", "var(--bg-primary, #0a0a0f)");
-        bg.setAttribute("rx", "3");
-        bg.style.pointerEvents = "none";
-
-        g.appendChild(bg);
         g.appendChild(textEl);
     }
 
