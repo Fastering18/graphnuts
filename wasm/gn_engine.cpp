@@ -834,20 +834,27 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx, float f
             float midX = (p1.x + p2.x) / 2;
             path += " L" + f2s(midX) + "," + f2s(p1.y)
                   + " L" + f2s(midX) + "," + f2s(p2.y);
+            lx = midX;
+            ly = (p1.y + p2.y) / 2;
         } else if (!fromH && !toH) {
             float midY = (p1.y + p2.y) / 2;
             path += " L" + f2s(p1.x) + "," + f2s(midY)
                   + " L" + f2s(p2.x) + "," + f2s(midY);
+            lx = (p1.x + p2.x) / 2;
+            ly = midY;
         } else if (fromH && !toH) {
             path += " L" + f2s(p2.x) + "," + f2s(p1.y);
+            // Label at the corner for L-shape
+            lx = p2.x;
+            ly = p1.y;
         } else {
             path += " L" + f2s(p1.x) + "," + f2s(p2.y);
+            // Label at the corner for L-shape
+            lx = p1.x;
+            ly = p2.y;
         }
 
         path += " L" + f2s(p2.x) + "," + f2s(p2.y) + " L" + f2s(pt.x) + "," + f2s(pt.y);
-
-        lx = (pf.x + pt.x) / 2;
-        ly = (pf.y + pt.y) / 2;
     } else {
         // curved / true / bezier
         applyFanOffset(pf, fn, tn, e.fromPort, fromOff);
