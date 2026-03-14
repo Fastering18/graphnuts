@@ -948,7 +948,7 @@ static std::string renderEdgeSvg(const Graph& g, const Edge& e, int idx, float f
         labelWidth = e.label.length() * e.style.fontSize * 0.6f + 8.0f;
         labelHeight = e.style.fontSize + 4.0f;
         
-        o << "<defs><mask id=\"" << maskId << "\" maskUnits=\"userSpaceOnUse\">"
+        o << "<defs><mask id=\"" << maskId << "\" maskUnits=\"userSpaceOnUse\" x=\"-100000\" y=\"-100000\" width=\"200000\" height=\"200000\">"
           << "<rect x=\"-100000\" y=\"-100000\" width=\"200000\" height=\"200000\" fill=\"white\"/>"
           << "<rect x=\"" << f2s(fLx - labelWidth/2) << "\" y=\"" << f2s(fLy - labelHeight/2) 
           << "\" width=\"" << f2s(labelWidth) << "\" height=\"" << f2s(labelHeight) 
