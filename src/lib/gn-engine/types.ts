@@ -39,6 +39,7 @@ export interface GnGraph {
     edges: GnEdge[];
     clusters: Map<string, GnCluster>;
     attrs: Record<string, string>;
+    bgcolor?: string;
     nodeDefaults: Record<string, string>;
     edgeDefaults: Record<string, string>;
 }
